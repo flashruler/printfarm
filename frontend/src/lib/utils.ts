@@ -33,3 +33,5 @@ export function usePrinterStatus(id: string, enabled: boolean) {
     refetchInterval: 5_000,
   })
 }
+
+// (printer selection context lives in src/lib/printerSelection.tsx)

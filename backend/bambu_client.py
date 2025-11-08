@@ -26,3 +26,11 @@ class BambuPrinter:
             return status
         except Exception as e:
             return {"error": str(e)}
+        
+    async def get_filament_info(self):
+        try:
+            await self.connect()
+            filament_info = self.client.vt_tray()
+            return filament_info
+        except Exception as e:
+            return {"error": str(e)}

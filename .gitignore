@@ -1,0 +1,4 @@
+# Backend local secrets and configs
+backend/printers.json
+backend/printer.json
+backend/.env

@@ -2,9 +2,11 @@
 
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Thermometer, Droplets, AlertCircle } from "lucide-react"
+import { Thermometer, Droplets } from "lucide-react"
 import { usePrinters, usePrinterStatus } from "@/lib/utils"
+import { usePrinterSelection } from "@/lib/printerSelection"
+import { PrinterDetail } from "./printer-detail"
+import { AnimatePresence, motion } from "framer-motion"
 
 type StatusConfigKey = "printing" | "idle" | "error" | "unknown"
 
@@ -29,8 +31,12 @@ function getTemps(status: any): { nozzle: number | null; bed: number | null } {
   return { nozzle, bed }
 }
 
+const MotionCard = motion(Card)
+
 function GridPrinterCard({ id, type }: { id: string; type: string }) {
-  const { data, isLoading, error } = usePrinterStatus(id, true)
+  const { selectedId, setSelectedId } = usePrinterSelection()
+  const isSelected = selectedId === id
+  const { data, isLoading } = usePrinterStatus(id, !isSelected) // small card polling only if not expanded
   const { nozzle, bed } = getTemps(data)
   const statusKey: StatusConfigKey =
     (data?.print_status === "printing" && "printing") ||
@@ -39,60 +45,55 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
     "unknown"
 
   return (
-    <Card className="p-4 bg-card border-border hover:border-primary/50 transition-colors">
-      <div className="space-y-3">
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="font-semibold text-foreground">{type}</h3>
-            <p className="text-xs text-muted-foreground font-mono">{id}</p>
-          </div>
-          <Badge className={statusConfig[statusKey].color}>{statusConfig[statusKey].label}</Badge>
+    <AnimatePresence mode="popLayout" initial={false}>
+      {isSelected ? (
+        <div className="col-span-1 md:col-span-2">
+          {/* The expanded detail uses the same layoutId internally to morph from the compact card */}
+          <PrinterDetail id={id} onClose={() => setSelectedId(null)} />
         </div>
-
-        {/* Status Info */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
-          <div className="flex items-center gap-2">
-            <Thermometer className="w-4 h-4 text-muted-foreground" />
-            <div className="text-sm">
-              {isLoading ? (
-                <span className="text-muted-foreground">Loading...</span>
-              ) : error ? (
-                <span className="text-destructive">Error</span>
-              ) : (
-                <>
-                  <span className="text-foreground font-mono">{nozzle ?? "-"}°</span>
-                  <span className="text-muted-foreground mx-1">/</span>
-                  <span className="text-foreground font-mono">{bed ?? "-"}°</span>
-                </>
-              )}
+      ) : (
+        <MotionCard
+          layoutId={`printer-${id}`}
+          layout
+          onClick={() => setSelectedId(id)}
+          initial={{ opacity: 0.9 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0.9 }}
+          transition={{ layout: { duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }, duration: 0.2 }}
+          className="p-4 bg-card border-border transition-all duration-200 ease-out cursor-pointer hover:shadow-md hover:border-primary/50"
+        >
+          <div className="space-y-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold text-foreground">{type}</h3>
+                <p className="text-xs text-muted-foreground font-mono">{id}</p>
+              </div>
+              <Badge className={statusConfig[statusKey].color}>{statusConfig[statusKey].label}</Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+              <div className="flex items-center gap-2">
+                <Thermometer className="w-4 h-4 text-muted-foreground" />
+                <div className="text-sm">
+                  {isLoading ? (
+                    <span className="text-muted-foreground">…</span>
+                  ) : (
+                    <>
+                      <span className="text-foreground font-mono">{nozzle ?? "-"}°</span>
+                      <span className="text-muted-foreground mx-1">/</span>
+                      <span className="text-foreground font-mono">{bed ?? "-"}°</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Droplets className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground truncate">{type}</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Droplets className="w-4 h-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground truncate">{type}</span>
-          </div>
-        </div>
-
-        {/* Placeholder progress if available later */}
-        {typeof (data as any)?.progress === "number" && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground truncate flex-1 font-mono">Current Job</span>
-              <span className="text-foreground font-semibold ml-2">{(data as any).progress}%</span>
-            </div>
-            <Progress value={(data as any).progress} className="h-1.5" />
-          </div>
-        )}
-
-        {(data as any)?.print_status === "error" && (
-          <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 border border-destructive/20">
-            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-            <span className="text-xs text-destructive">Printer reported error</span>
-          </div>
-        )}
-      </div>
-    </Card>
+        </MotionCard>
+      )}
+    </AnimatePresence>
   )
 }
 
@@ -114,7 +115,7 @@ export function PrinterGrid() {
       {isLoading && <div className="text-sm text-muted-foreground">Loading printers...</div>}
       {error && <div className="text-sm text-destructive">{(error as Error).message}</div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {printers?.map((p: any) => (
           <GridPrinterCard key={p.id} id={p.id} type={p.type} />
         ))}

@@ -84,6 +84,15 @@ async def get_printer_status(printer_id: str):
     if hasattr(printer, "get_status"):
         return await printer.get_status()
     raise HTTPException(400, "Printer does not support status retrieval")
+@app.get("/api/printers/{printer_id}/filamentinfo")
+async def api_filament_info(printer_id: str):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    # Assume printer exposes async get_filament_info as in BambuPrinter
+    if hasattr(printer, "get_filament_info"):
+        return await printer.get_filament_info()
+    raise HTTPException(400, "Printer does not support filament info retrieval")
 
 # -------------------
 # Static frontend serving
