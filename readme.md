@@ -24,12 +24,12 @@ cd printfarm
 2. Install dependencies (example)
 ```
 # replace with your platform/package manager
-npm install
+pnpm install (frontend)
 # or
-pip install -r requirements.txt
+pip install -r requirements.txt (backend)
 ```
 
-3. Configure
+<!-- 3. Configure
 - Copy the example config and edit printers, storage locations, and auth settings:
 ```
 cp config.example.yml config.yml
@@ -41,7 +41,7 @@ cp config.example.yml config.yml
 npm start
 # or
 ./bin/printfarm serve --config config.yml
-```
+``` -->
 
 ## Development
 - Run tests:

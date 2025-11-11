@@ -1,19 +1,21 @@
 "use client"
 
 import { Card } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Thermometer, Droplets } from "lucide-react"
-import { usePrinters, usePrinterStatus } from "@/lib/utils"
+import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType} from "@/lib/utils"
 import { usePrinterSelection } from "@/lib/printerSelection"
 import { PrinterDetail } from "./printer-detail"
-import { AnimatePresence, motion } from "framer-motion"
+import { motion } from "framer-motion"
 
-type StatusConfigKey = "printing" | "idle" | "error" | "unknown"
+type StatusConfigKey = "printing" | "idle" | "error" | "unknown" | "finished"
 
 const statusConfig: Record<StatusConfigKey, { color: string; label: string }> = {
   printing: { color: "bg-primary text-primary-foreground", label: "Printing" },
   idle: { color: "bg-muted text-muted-foreground", label: "Idle" },
   error: { color: "bg-destructive text-destructive-foreground", label: "Error" },
+  finished: { color: "bg-green-600 text-white", label: "Finished" },
   unknown: { color: "bg-secondary text-foreground", label: "Unknown" },
 }
 
@@ -37,63 +39,83 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
   const { selectedId, setSelectedId } = usePrinterSelection()
   const isSelected = selectedId === id
   const { data, isLoading } = usePrinterStatus(id, !isSelected) // small card polling only if not expanded
+  const { data: wsPct } = useWsPercentage(id)
+  const percent: number | null = wsPct?.print_percentage ?? null
+  const filamentInfo = useWsTrayType(id)
+  const filamentType: string | null = filamentInfo.data?.tray_type ?? null
   const { nozzle, bed } = getTemps(data)
   const statusKey: StatusConfigKey =
-    (data?.print_status === "printing" && "printing") ||
+    (data?.print_status === "RUNNING" && "printing") ||
     (data?.print_status === "IDLE" && "idle") ||
-    (data?.print_status === "error" && "error") ||
+    (data?.print_status === "FINISH" && "finished") ||
+    (data?.print_status === "ERROR" && "error") ||
     "unknown"
 
+  if (isSelected) {
+    return (
+      <PrinterDetail
+        id={id}
+        onClose={() => setSelectedId(null)}
+        className="col-span-1 md:col-span-2"
+      />
+    )
+  }
+
   return (
-    <AnimatePresence mode="popLayout" initial={false}>
-      {isSelected ? (
-        <div className="col-span-1 md:col-span-2">
-          {/* The expanded detail uses the same layoutId internally to morph from the compact card */}
-          <PrinterDetail id={id} onClose={() => setSelectedId(null)} />
+    <MotionCard
+      layoutId={`printer-${id}`}
+      layout
+      onClick={() => setSelectedId(id)}
+      initial={{ opacity: 0.9 }}
+      animate={{ opacity: 1 }}
+      transition={{ layout: { duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }, duration: 0.2 }}
+      className="p-4 bg-card border-border transition-all duration-200 ease-out cursor-pointer hover:shadow-md hover:border-primary/50"
+    >
+      <div className="space-y-3">
+        <div className="flex items-start justify-between">
+          <div className="text-left">
+            <h3 className="font-semibold text-foreground">{type}</h3>
+            <p className="text-xs text-muted-foreground font-mono">{id}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge className={statusConfig[statusKey].color}>{statusConfig[statusKey].label}</Badge>
+          </div>
         </div>
-      ) : (
-        <MotionCard
-          layoutId={`printer-${id}`}
-          layout
-          onClick={() => setSelectedId(id)}
-          initial={{ opacity: 0.9 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0.9 }}
-          transition={{ layout: { duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }, duration: 0.2 }}
-          className="p-4 bg-card border-border transition-all duration-200 ease-out cursor-pointer hover:shadow-md hover:border-primary/50"
-        >
-          <div className="space-y-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-semibold text-foreground">{type}</h3>
-                <p className="text-xs text-muted-foreground font-mono">{id}</p>
+        <div>
+          {typeof percent === 'number' ? (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Progress</span>
+                <span className="font-mono text-foreground">{Math.round(percent)}%</span>
               </div>
-              <Badge className={statusConfig[statusKey].color}>{statusConfig[statusKey].label}</Badge>
+              <Progress value={percent} />
             </div>
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
-              <div className="flex items-center gap-2">
-                <Thermometer className="w-4 h-4 text-muted-foreground" />
-                <div className="text-sm">
-                  {isLoading ? (
-                    <span className="text-muted-foreground">…</span>
-                  ) : (
-                    <>
-                      <span className="text-foreground font-mono">{nozzle ?? "-"}°</span>
-                      <span className="text-muted-foreground mx-1">/</span>
-                      <span className="text-foreground font-mono">{bed ?? "-"}°</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Droplets className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground truncate">{type}</span>
-              </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">No active print</span>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+          <div className="flex items-center gap-2">
+            <Thermometer className="w-4 h-4 text-muted-foreground" />
+            <div className="text-sm">
+              {isLoading ? (
+                <span className="text-muted-foreground">…</span>
+              ) : (
+                <>
+                  <span className="text-foreground font-mono">{nozzle ?? "-"}°</span>
+                  <span className="text-muted-foreground mx-1">/</span>
+                  <span className="text-foreground font-mono">{bed ?? "-"}°</span>
+                </>
+              )}
             </div>
           </div>
-        </MotionCard>
-      )}
-    </AnimatePresence>
+          <div className="flex items-center gap-2">
+            <Droplets className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground truncate">{filamentType}</span>
+          </div>
+        </div>
+      </div>
+    </MotionCard>
   )
 }
 

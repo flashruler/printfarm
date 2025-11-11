@@ -11,12 +11,17 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
     return (
       <div
         ref={ref}
-        className={cn("relative w-full overflow-hidden rounded-full bg-secondary", className)}
+        className={cn(
+          // Visible track
+          "relative w-full h-2 rounded-full bg-muted border border-border/50 overflow-hidden",
+          className
+        )}
         {...props}
       >
         <div
-          className="h-full w-full flex-1 bg-primary"
-          style={{ transform: `translateX(-${100 - clamped}%)` }}
+          // Filled portion
+          className="h-full bg-primary transition-[width] duration-200 ease-out"
+          style={{ width: `${clamped}%` }}
         />
       </div>
     );

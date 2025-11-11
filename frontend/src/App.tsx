@@ -6,9 +6,11 @@ import { PrinterGrid } from './components/printer-grid';
 import { JobQueue } from './components/job-queue';
 import { MaterialUsage } from './components/material-usage';
 import './App.css'
+import { useStatusStream } from '@/lib/utils'
 
 function App() {
-
+  // Establish a single WebSocket connection to receive live updates (e.g., print percentage)
+  useStatusStream(true)
 
   return (
     <div className="p-6 space-y-8">

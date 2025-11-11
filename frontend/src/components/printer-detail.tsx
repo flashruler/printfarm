@@ -3,25 +3,28 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Thermometer, Droplets, AlertCircle, XCircle, PauseCircle, PlayCircle } from 'lucide-react';
-import { usePrinterStatus } from '@/lib/utils';
+import { usePrinterStatus, getFilamentInfo, useWsPercentage } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
 const MotionCard = motion(Card);
 
-export function PrinterDetail({ id, onClose }: { id: string; onClose: () => void }) {
+export function PrinterDetail({ id, onClose, className = "" }: { id: string; onClose: () => void; className?: string }) {
   const { data, isLoading, error } = usePrinterStatus(id, true);
 
   const bed = typeof data?.bed_temperature === 'number' ? data?.bed_temperature : null;
   const nz = data?.nozzle_temperatures;
   const nozzle = Array.isArray(nz) ? nz[0] : (typeof nz === 'number' ? nz : (nz?.current ?? nz?.nozzle));
   const status = data?.print_status || 'unknown';
+  const filament_info = getFilamentInfo(id);
+  const { data: wsPct } = useWsPercentage(id);
+  const percent: number | null = (wsPct?.print_percentage ?? null) as any;
 
   return (
     <MotionCard
       layoutId={`printer-${id}`}
       layout
       transition={{ layout: { duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }, duration: 0.2 }}
-      className="p-6 border-primary/70 shadow-lg space-y-4"
+      className={`p-6 border-primary/70 shadow-lg space-y-4 ${className}`}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
@@ -34,24 +37,25 @@ export function PrinterDetail({ id, onClose }: { id: string; onClose: () => void
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium flex items-center gap-2"><Thermometer className="w-4 h-4" /> Temperatures</h3>
+        <div className="space-y-2 text-left">
+          <h3 className="text-sm font-medium flex items-center gap-2"><Thermometer className="w-4 h-4" /> Vitals</h3>
           <div className="text-sm font-mono">Nozzle: {nozzle ?? '-'}°C</div>
           <div className="text-sm font-mono">Bed: {bed ?? '-'}°C</div>
+          <div className="text-sm font-mono">Material: {filament_info.data?.tray_type ?? '-'}</div>
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium flex items-center gap-2"><Droplets className="w-4 h-4" /> Material</h3>
-          <div className="text-sm text-muted-foreground">(Material info TBD)</div>
+          <div className="text-sm text-muted-foreground">{filament_info.data?.tray_type ?? '-'}</div>
         </div>
       </div>
 
-      {typeof (data as any)?.progress === 'number' && (
+      {typeof percent === 'number' && (
         <div className="space-y-1">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Progress</span>
-            <span className="font-mono">{(data as any).progress}%</span>
+            <span className="font-mono">{Math.round(percent)}%</span>
           </div>
-          <Progress value={(data as any).progress} />
+          <Progress value={percent} />
         </div>
       )}
 
