@@ -121,9 +121,20 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
 
 export function PrinterGrid() {
   const { data: printers, isLoading, error } = usePrinters()
+  const { selectedId } = usePrinterSelection()
   const activeCount = Array.isArray(printers)
     ? printers.length // until we have richer status on list, just count all
     : 0
+
+  // Ensure the expanded (selected) card renders first in the grid
+  const ordered = Array.isArray(printers) ? [...printers] : []
+  if (selectedId) {
+    ordered.sort((a: any, b: any) => {
+      if (a.id === selectedId) return -1
+      if (b.id === selectedId) return 1
+      return 0
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -138,10 +149,10 @@ export function PrinterGrid() {
       {error && <div className="text-sm text-destructive">{(error as Error).message}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        {printers?.map((p: any) => (
+        {ordered?.map((p: any) => (
           <GridPrinterCard key={p.id} id={p.id} type={p.type} />
         ))}
-        {printers?.length === 0 && (
+        {ordered?.length === 0 && (
           <Card className="p-4 bg-card border-border">
             <div className="text-sm text-muted-foreground">No printers added yet.</div>
           </Card>
