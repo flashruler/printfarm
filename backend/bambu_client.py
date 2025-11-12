@@ -1,4 +1,4 @@
-from bambulabs_api import Printer
+from bambulabs_api import Printer, PrintStatus
 from typing import Any, Optional
 
 
@@ -55,7 +55,21 @@ class BambuPrinter:
             status = {}
             status['bed_temperature'] = self.client.get_bed_temperature()
             status['nozzle_temperatures'] = self.client.get_nozzle_temperature()
-            status['print_status'] = self.client.get_state()
+            raw_state = self.client.get_state()
+            status['print_status'] = _status_to_string(raw_state)
+            status.update(_normalize_print_status(raw_state))
+            # Error code (0 means normal per API docs)
+            try:
+                err = self.client.print_error_code()
+            except Exception:
+                err = None
+            status['print_error_code'] = err
+            if isinstance(err, int) and err != 0:
+                status['has_error'] = True
+                # If error present, prefer phase=error
+                status['print_phase'] = 'error'
+            else:
+                status['has_error'] = False
             #status['current_state'] = self.client.get_current_state()
             return status
         except Exception as e:
@@ -115,3 +129,90 @@ class BambuPrinter:
             return data
         except Exception as e:
             return {"error": str(e), "print_percentage": None}
+    # Home Printer
+    async def home(self):
+        try:
+            await self.connect()
+            self.client.home_printer()
+            return {"status": "success", "action": "home"}
+        except Exception as e:
+            return {"error": str(e), "action": "home"}
+
+    # Pause current print
+    async def pause(self):
+        try:
+            await self.connect()
+            self.client.pause_print()
+            return {"status": "success", "action": "pause"}
+        except Exception as e:
+            return {"error": str(e), "action": "pause"}
+
+    # Resume paused print
+    async def resume(self):
+        try:
+            await self.connect()
+            self.client.resume_print()
+            return {"status": "success", "action": "resume"}
+        except Exception as e:
+            return {"error": str(e), "action": "resume"}
+
+    # Cancel (stop) current print
+    async def cancel(self):
+        try:
+            await self.connect()
+            self.client.stop_print()
+            return {"status": "success", "action": "cancel"}
+        except Exception as e:
+            return {"error": str(e), "action": "cancel"}
+    
+
+def _status_to_string(state: Any) -> Optional[str]:
+    try:
+        if isinstance(state, PrintStatus):
+            return state.name
+        if hasattr(state, 'name'):
+            return str(state.name)
+        if isinstance(state, str):
+            return state.upper()
+    except Exception:
+        pass
+    return None
+
+
+def _normalize_print_status(state: Any) -> dict:
+    raw = _status_to_string(state)
+    phase = 'unknown'
+    if raw is None:
+        return {"print_status_raw": None, "print_phase": phase}
+
+    prep = {
+        "HEATBED_PREHEATING","HEATING_HOTEND","AUTO_BED_LEVELING","SWEEPING_XY_MECH_MODE",
+        "HOMING_TOOLHEAD","INSPECTING_FIRST_LAYER","SCANNING_BED_SURFACE","IDENTIFYING_BUILD_PLATE_TYPE",
+        "CLEANING_NOZZLE_TIP"
+    }
+    filament_ops = {"CHANGING_FILAMENT","FILAMENT_LOADING","FILAMENT_UNLOADING"}
+    error_like = {
+        "PAUSED_CUTTER_ERROR","PAUSED_FIRST_LAYER_ERROR","PAUSED_NOZZLE_CLOG",
+        "PAUSED_NOZZLE_TEMPERATURE_MALFUNCTION","PAUSED_HEAT_BED_TEMPERATURE_MALFUNCTION",
+        "PAUSED_CHAMBER_TEMPERATURE_CONTROL_ERROR","PAUSED_AMS_LOST"
+    }
+
+    if raw == "PRINTING":
+        phase = "printing"
+    elif raw in prep:
+        phase = "preparing"
+    elif raw.startswith("CALIBRATING"):
+        phase = "calibrating"
+    elif raw in filament_ops:
+        phase = "filament_change"
+    elif raw.startswith("PAUSED") or raw in {"M400_PAUSE"}:
+        phase = "paused"
+    elif raw in {"COOLING_CHAMBER"}:
+        phase = "cooling"
+    elif raw in error_like:
+        phase = "error"
+    elif raw == "IDLE":
+        phase = "idle"
+
+    return {"print_status_raw": raw, "print_phase": phase}
+        

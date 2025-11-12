@@ -2,8 +2,8 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Thermometer, Droplets, AlertCircle, XCircle, PauseCircle, PlayCircle } from 'lucide-react';
-import { usePrinterStatus, getFilamentInfo, useWsPercentage } from '@/lib/utils';
+import { Thermometer, Droplets, AlertCircle, XCircle, PauseCircle, PlayCircle, House } from 'lucide-react';
+import { usePrinterStatus, getFilamentInfo, useWsPercentage, usePrinterAction  } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
 const MotionCard = motion(Card);
@@ -18,6 +18,7 @@ export function PrinterDetail({ id, onClose, className = "" }: { id: string; onC
   const filament_info = getFilamentInfo(id);
   const { data: wsPct } = useWsPercentage(id);
   const percent: number | null = (wsPct?.print_percentage ?? null) as any;
+  const { mutate: runAction, isPending} = usePrinterAction()
 
   return (
     <MotionCard
@@ -68,17 +69,20 @@ export function PrinterDetail({ id, onClose, className = "" }: { id: string; onC
       <div className="pt-2 border-t border-border space-y-2">
         <h3 className="text-sm font-medium">Controls</h3>
         <div className="flex gap-3">
-          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" disabled>
+          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" onClick={() => runAction({ id, action: "pause" })} disabled={isPending}>
             <PauseCircle className="w-4 h-4" /> Pause
           </button>
-          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" disabled>
+          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" onClick={() => runAction({ id, action: "resume" })} disabled={isPending}>
             <PlayCircle className="w-4 h-4" /> Resume
           </button>
-          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" disabled>
+          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" onClick={() => runAction({ id, action: "cancel" })} disabled={isPending}>
             <XCircle className="w-4 h-4" /> Cancel
           </button>
+          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" onClick={() => runAction({ id, action: "home" })} disabled={isPending}>
+            <House className="w-4 h-4" /> Home
+          </button>
         </div>
-        <p className="text-xs text-muted-foreground">(Control endpoints not implemented yet.)</p>
+        {/* <p className="text-xs text-muted-foreground">(Control endpoints not implemented yet.)</p> */}
       </div>
 
       <div className="text-xs text-muted-foreground">

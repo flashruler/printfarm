@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Thermometer, Droplets } from "lucide-react"
-import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType} from "@/lib/utils"
+import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType, useWsPrintPhase } from "@/lib/utils"
 import { usePrinterSelection } from "@/lib/printerSelection"
 import { PrinterDetail } from "./printer-detail"
 import { motion } from "framer-motion"
@@ -43,6 +43,8 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
   const percent: number | null = wsPct?.print_percentage ?? null
   const filamentInfo = useWsTrayType(id)
   const filamentType: string | null = filamentInfo.data?.tray_type ?? null
+  const phaseInfo = useWsPrintPhase(id)
+  const printPhase: string | null = (phaseInfo.data?.print_phase as any) ?? null
   const { nozzle, bed } = getTemps(data)
   const statusKey: StatusConfigKey =
     (data?.print_status === "RUNNING" && "printing") ||
@@ -89,6 +91,9 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
                 <span className="font-mono text-foreground">{Math.round(percent)}%</span>
               </div>
               <Progress value={percent} />
+              {printPhase && (
+                <div className="text-[11px] text-muted-foreground mt-1 text-left">Current Phase: <span className="text-foreground font-medium">{printPhase}</span></div>
+              )}
             </div>
           ) : (
             <span className="text-xs text-muted-foreground">No active print</span>

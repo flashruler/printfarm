@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 
 export type PrinterListItem = { id: string; type: string }
@@ -34,6 +34,42 @@ export function usePrinterStatus(id: string, enabled: boolean) {
     refetchInterval: 5_000,
   })
 }
+
+
+// -------------------------
+// POST helpers & mutations
+// -------------------------
+export async function postJson<TResp, TBody = unknown>(url: string, body?: TBody, init?: RequestInit): Promise<TResp> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    ...init,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(text || res.statusText)
+  }
+  return res.json() as Promise<TResp>
+}
+
+export type PrinterAction = 'pause' | 'resume' | 'cancel' | 'home'
+export interface ActionResult { status?: string; error?: string; action?: PrinterAction }
+
+// Mutation hook for printer control actions. WebSocket broadcast will update caches; invalidations are fallback only.
+export function usePrinterAction() {
+  const qc = useQueryClient()
+  return useMutation<ActionResult, Error, { id: string; action: PrinterAction}>({
+    mutationFn: ({ id, action }) => postJson<ActionResult>(`/api/printers/${id}/${action}`),
+    onSuccess: (_data, vars) => {
+      // Optional invalidations in case WS missed or user was disconnected
+      qc.invalidateQueries({ queryKey: ["printer-status", vars.id] })
+      qc.invalidateQueries({ queryKey: ["printer-percentage", vars.id] })
+    },
+  })
+}
+
+
 
 // Filament info: fetch once, then rely on WS to push updates when material changes
 export function getFilamentInfo(id: string) {
@@ -84,6 +120,11 @@ export function useStatusStream(enabled: boolean = true) {
             }
             if (msg.status) {
               qc.setQueryData(["printer-status", pid], msg.status)
+              // Also cache print phase & error info separately for lightweight reads
+              const phase = msg.status.print_phase || msg.status.print_status || null
+              const errorCode = msg.status.print_error_code ?? null
+              const hasError = msg.status.has_error ?? (typeof errorCode === 'number' && errorCode !== 0)
+              qc.setQueryData(["printer-printphase", pid], { print_phase: phase, print_error_code: errorCode, has_error: hasError })
             }
             if (Object.prototype.hasOwnProperty.call(msg, 'tray_type')) {
               const prev: any = qc.getQueryData(["printer-filament", pid])
@@ -139,6 +180,19 @@ export function useWsTrayType(id: string) {
   return useQuery<{ tray_type: string | null; error?: string } | undefined>({
     queryKey: ["printer-filament", id],
     queryFn: async () => qc.getQueryData(["printer-filament", id]) as any,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+  })
+}
+
+export function useWsPrintPhase(id: string) {
+  const qc = useQueryClient()
+  return useQuery<{ print_phase: string | null; error?: string } | undefined>({
+    queryKey: ["printer-printphase", id],
+    queryFn: async () => qc.getQueryData(["printer-printphase", id]) as any,
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,

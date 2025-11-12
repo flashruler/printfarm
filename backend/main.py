@@ -243,6 +243,101 @@ async def api_filament_info(printer_id: str):
         return await printer.get_filament_info()
     raise HTTPException(400, "Printer does not support filament info retrieval")
 
+#home printer
+@app.post("/api/printers/{printer_id}/home")
+async def home_printer(printer_id: str):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    if hasattr(printer, "home"):
+        result = await printer.home()
+        # After homing, broadcast fresh status
+        if hasattr(printer, "get_status"):
+            try:
+                status_payload = await printer.get_status() or {}
+                await manager.broadcast({
+                    "type": "printer_update",
+                    "printer_id": printer_id,
+                    "status": status_payload,
+                    "percentage": None,
+                    "percentage_changed": False,
+                })
+            except Exception:
+                pass
+        return result
+    raise HTTPException(400, "Printer does not support homing")
+
+#Pause printer
+@app.post("/api/printers/{printer_id}/pause")
+async def pause_print(printer_id: str):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    if hasattr(printer, "pause"):
+        result = await printer.pause()
+        # Broadcast updated status reflecting pause
+        if hasattr(printer, "get_status"):
+            try:
+                status_payload = await printer.get_status() or {}
+                await manager.broadcast({
+                    "type": "printer_update",
+                    "printer_id": printer_id,
+                    "status": status_payload,
+                    "percentage": None,
+                    "percentage_changed": False,
+                })
+            except Exception:
+                pass
+        return result
+    raise HTTPException(400, "Printer does not support pausing")
+
+#Resume printer
+@app.post("/api/printers/{printer_id}/resume")
+async def resume_print(printer_id: str):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    if hasattr(printer, "resume"):
+        result = await printer.resume()
+        if hasattr(printer, "get_status"):
+            try:
+                status_payload = await printer.get_status() or {}
+                await manager.broadcast({
+                    "type": "printer_update",
+                    "printer_id": printer_id,
+                    "status": status_payload,
+                    "percentage": None,
+                    "percentage_changed": False,
+                })
+            except Exception:
+                pass
+        return result
+    raise HTTPException(400, "Printer does not support resuming")
+
+#Cancel printer
+@app.post("/api/printers/{printer_id}/cancel")
+async def cancel_print(printer_id: str):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    if hasattr(printer, "cancel"):
+        result = await printer.cancel()
+        if hasattr(printer, "get_status"):
+            try:
+                status_payload = await printer.get_status() or {}
+                await manager.broadcast({
+                    "type": "printer_update",
+                    "printer_id": printer_id,
+                    "status": status_payload,
+                    "percentage": None,
+                    "percentage_changed": False,
+                })
+            except Exception:
+                pass
+        return result
+    raise HTTPException(400, "Printer does not support canceling prints")
+
+
 # -------------------
 # Static frontend serving
 # -------------------
