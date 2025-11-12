@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -9,6 +9,9 @@ import asyncio
 from dotenv import load_dotenv
 import time
 import os
+from typing import Any, Dict, List
+from uuid import uuid4
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -30,6 +33,50 @@ app.add_middleware(
 
 
 registry = PrinterRegistry()
+
+# -------------------
+# Print job store (simple JSON persistence)
+# -------------------
+JOBS_PATH = Path(__file__).parent / "prints.json"
+
+class JobStore:
+    def __init__(self, path: Path):
+        self.path = path
+        self.jobs: List[Dict[str, Any]] = []
+        self._load()
+
+    def _load(self):
+        if self.path.exists():
+            try:
+                import json
+                self.jobs = json.loads(self.path.read_text())
+            except Exception:
+                self.jobs = []
+
+    def _save(self):
+        try:
+            import json
+            self.path.write_text(json.dumps(self.jobs, indent=2))
+        except Exception:
+            pass
+
+    def add(self, job: Dict[str, Any]):
+        # newest first
+        self.jobs.insert(0, job)
+        self._save()
+
+    def list(self) -> List[Dict[str, Any]]:
+        return list(self.jobs)
+
+    def update(self, job_id: str, **fields):
+        for j in self.jobs:
+            if j.get("id") == job_id:
+                j.update(fields)
+                self._save()
+                return j
+        return None
+
+job_store = JobStore(JOBS_PATH)
 
 # -------------------
 # WebSocket manager for live updates
@@ -243,6 +290,57 @@ async def api_filament_info(printer_id: str):
         return await printer.get_filament_info()
     raise HTTPException(400, "Printer does not support filament info retrieval")
 
+# -------------------
+# G-code upload + print, and history listing
+# -------------------
+@app.post("/api/printers/{printer_id}/upload")
+def upload_and_print_gcode(printer_id: str, file: UploadFile = File(...)):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    if not file.filename.lower().endswith((".gcode", ".g", ".nc")):
+        raise HTTPException(400, "Only G-code files are supported (.gcode/.g/.nc)")
+    try:
+        if not getattr(printer, "connected", False):
+            printer.client.connect()
+        uploaded_path = printer.client.upload_file(file.file, filename=file.filename)
+        # Start the print. For G-code prints, pass the uploaded path as the 'plate_number' parameter.
+        printer.client.start_print(filename=file.filename, plate_number=uploaded_path)
+        job = {
+            "id": str(uuid4()),
+            "file_name": file.filename,
+            "printer_id": printer_id,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "uploaded_path": uploaded_path,
+            "status": "printing",
+        }
+        job_store.add(job)
+        return job
+    except Exception as e:
+        raise HTTPException(500, f"Upload/print failed: {e}")
+
+
+@app.get("/api/prints")
+def list_print_history():
+    items = []
+    for j in job_store.list():
+        jcopy = dict(j)
+        pid = j.get("printer_id")
+        printer = registry.printers.get(pid)
+        if printer:
+            try:
+                pct = printer.client.get_percentage()
+            except Exception:
+                pct = None
+            try:
+                state = printer.client.get_state()
+            except Exception:
+                state = None
+            jcopy["progress"] = pct
+            jcopy["printer_state"] = state
+        items.append(jcopy)
+    return {"items": items}
+
 #home printer
 @app.post("/api/printers/{printer_id}/home")
 async def home_printer(printer_id: str):
@@ -339,17 +437,32 @@ async def cancel_print(printer_id: str):
 
 
 # -------------------
-# Static frontend serving
+# Static frontend serving (supports Vite default 'dist' or 'build')
 # -------------------
-frontend_dir = Path(__file__).parent.parent / "frontend" / "build"
-if frontend_dir.exists():
-    app.mount("/static", StaticFiles(directory=frontend_dir / "static"), name="static")
+def _detect_frontend_root() -> Path | None:
+    root = Path(__file__).parent.parent / "frontend"
+    for candidate in ("dist", "build"):
+        p = root / candidate
+        if p.exists() and (p / "index.html").exists():
+            return p
+    return None
+
+frontend_dir = _detect_frontend_root()
+if frontend_dir:
+    # Mount /static if subfolder exists (Vite puts assets under assets/ by default)
+    static_dir = frontend_dir / "static"
+    assets_dir = frontend_dir / "assets"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
 @app.get("/{path:path}")
 async def serve_react_app(path: str):
-    index_path = frontend_dir / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
+    if frontend_dir:
+        index_path = frontend_dir / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
     return {"detail": "Frontend not built"}
 
 # WebSocket endpoint for streaming updates

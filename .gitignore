@@ -2,3 +2,4 @@
 backend/printers.json
 backend/printer.json
 backend/.env
+backend/prints.json

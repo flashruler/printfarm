@@ -2,9 +2,10 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Thermometer, Droplets, AlertCircle, XCircle, PauseCircle, PlayCircle, House } from 'lucide-react';
-import { usePrinterStatus, getFilamentInfo, useWsPercentage, usePrinterAction  } from '@/lib/utils';
+import { Thermometer, Droplets, AlertCircle, XCircle, PauseCircle, PlayCircle, House, Upload } from 'lucide-react';
+import { usePrinterStatus, useFilamentInfo, useWsPercentage, usePrinterAction, useUploadGcode  } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { useRef, useState } from 'react';
 
 const MotionCard = motion(Card);
 
@@ -15,10 +16,23 @@ export function PrinterDetail({ id, onClose, className = "" }: { id: string; onC
   const nz = data?.nozzle_temperatures;
   const nozzle = Array.isArray(nz) ? nz[0] : (typeof nz === 'number' ? nz : (nz?.current ?? nz?.nozzle));
   const status = data?.print_status || 'unknown';
-  const filament_info = getFilamentInfo(id);
+  const filament_info = useFilamentInfo(id);
   const { data: wsPct } = useWsPercentage(id);
-  const percent: number | null = (wsPct?.print_percentage ?? null) as any;
+  const percent: number | null = typeof wsPct?.print_percentage === 'number' ? wsPct.print_percentage : null;
   const { mutate: runAction, isPending} = usePrinterAction()
+  const upload = useUploadGcode()
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [selectedName, setSelectedName] = useState<string>("")
+  const onPick = () => inputRef.current?.click()
+  const onFileChosen: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const f = e.target.files?.[0]
+    setSelectedName(f?.name || "")
+  }
+  const onUpload = () => {
+    const f = inputRef.current?.files?.[0]
+    if (!f) return
+    upload.mutate({ printerId: id, file: f })
+  }
 
   return (
     <MotionCard
@@ -83,6 +97,26 @@ export function PrinterDetail({ id, onClose, className = "" }: { id: string; onC
           </button>
         </div>
         {/* <p className="text-xs text-muted-foreground">(Control endpoints not implemented yet.)</p> */}
+      </div>
+
+      <div className="pt-2 border-t border-border space-y-2">
+        <h3 className="text-sm font-medium">Upload G-code</h3>
+        <div className="flex items-center gap-2">
+          <input ref={inputRef} type="file" accept=".gcode,.g,.nc" className="hidden" onChange={onFileChosen} />
+          <button className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70" onClick={onPick}>
+            <Upload className="w-4 h-4" /> Choose File
+          </button>
+          <span className="text-xs text-muted-foreground truncate max-w-48">{selectedName || 'No file selected'}</span>
+          <button className="text-sm px-3 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50" disabled={!selectedName || upload.isPending} onClick={onUpload}>
+            {upload.isPending ? 'Uploading…' : 'Upload & Print'}
+          </button>
+        </div>
+        {upload.isError && (
+          <div className="text-xs text-destructive">{String(upload.error?.message || 'Upload failed')}</div>
+        )}
+        {upload.isSuccess && (
+          <div className="text-xs text-green-600">Started print: {selectedName}</div>
+        )}
       </div>
 
       <div className="text-xs text-muted-foreground">

@@ -3,14 +3,16 @@ import { Badge } from "@/components/ui/badge"
 import { Clock, FileCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-const queue = [
+type Priority = "high" | "normal" | "low"
+
+const queue: { id: number; file: string; priority: Priority; eta: string }[] = [
   { id: 1, file: "phone-stand.gcode", priority: "high", eta: "2h 30m" },
   { id: 2, file: "desk-organizer.gcode", priority: "normal", eta: "4h 15m" },
   { id: 3, file: "cable-holder.gcode", priority: "normal", eta: "1h 20m" },
   { id: 4, file: "prototype-v2.gcode", priority: "low", eta: "5h 45m" },
 ]
 
-const priorityColors = {
+const priorityColors: Record<Priority, string> = {
   high: "bg-destructive/20 text-destructive border-destructive/30",
   normal: "bg-primary/20 text-primary border-primary/30",
   low: "bg-muted text-muted-foreground border-border",
@@ -36,7 +38,7 @@ export function JobQueue() {
               <div className="flex items-center justify-center w-8 h-8 rounded bg-card text-muted-foreground font-mono text-sm">
                 {index + 1}
               </div>
-              <FileCode className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <FileCode className="w-4 h-4 text-muted-foreground shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate font-mono">{job.file}</p>
                 <div className="flex items-center gap-2 mt-1">

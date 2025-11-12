@@ -1,10 +1,11 @@
 
 import PrinterManager from './components/PrinterManager';
 import { FarmStats } from './components/farm-stats';
-import { ActivityChart } from './components/activity-chart';
+// import { ActivityChart } from './components/activity-chart';
 import { PrinterGrid } from './components/printer-grid';
-import { JobQueue } from './components/job-queue';
-import { MaterialUsage } from './components/material-usage';
+// import { JobQueue } from './components/job-queue';
+// import { MaterialUsage } from './components/material-usage';
+import { PrintHistory } from './components/print-history';
 import './App.css'
 import { useStatusStream } from '@/lib/utils'
 
@@ -23,14 +24,14 @@ function App() {
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-2 space-y-6">
           {/* <ActivityChart /> */}
           <PrinterGrid />
         </div>
-        {/* <div className="space-y-6">
-          <JobQueue />
-          <MaterialUsage />
-        </div> */}
+        <div className="space-y-6">
+          <PrintHistory />
+          {/* <MaterialUsage /> */}
+        </div>
       </div>
 
       {/* Management utilities */}

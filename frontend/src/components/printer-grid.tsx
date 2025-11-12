@@ -4,31 +4,33 @@ import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Thermometer, Droplets } from "lucide-react"
-import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType, useWsPrintPhase } from "@/lib/utils"
+import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType, type PrinterStatus, type PrinterListItem} from "@/lib/utils"
 import { usePrinterSelection } from "@/lib/printerSelection"
-import { PrinterDetail } from "./printer-detail"
+// import { PrinterDetail } from "./printer-detail"
 import { motion } from "framer-motion"
 
-type StatusConfigKey = "printing" | "idle" | "error" | "unknown" | "finished"
+// type StatusConfigKey = "printing" | "idle" | "error" | "unknown" | "finished"
 
-const statusConfig: Record<StatusConfigKey, { color: string; label: string }> = {
-  printing: { color: "bg-primary text-primary-foreground", label: "Printing" },
-  idle: { color: "bg-muted text-muted-foreground", label: "Idle" },
-  error: { color: "bg-destructive text-destructive-foreground", label: "Error" },
-  finished: { color: "bg-green-600 text-white", label: "Finished" },
-  unknown: { color: "bg-secondary text-foreground", label: "Unknown" },
-}
+// const statusConfig: Record<StatusConfigKey, { color: string; label: string }> = {
+//   printing: { color: "bg-primary text-primary-foreground", label: "Printing" },
+//   idle: { color: "bg-muted text-muted-foreground", label: "Idle" },
+//   error: { color: "bg-destructive text-destructive-foreground", label: "Error" },
+//   finished: { color: "bg-green-600 text-white", label: "Finished" },
+//   unknown: { color: "bg-secondary text-foreground", label: "Unknown" },
+// }
 
-function getTemps(status: any): { nozzle: number | null; bed: number | null } {
+type BackendStatus = PrinterStatus | undefined
+function getTemps(status: BackendStatus): { nozzle: number | null; bed: number | null } {
   // Backend returns: { bed_temperature, nozzle_temperatures, print_status, ... }
   const bed = typeof status?.bed_temperature === "number" ? status.bed_temperature : null
   let nozzle: number | null = null
   const nz = status?.nozzle_temperatures
   if (typeof nz === "number") nozzle = nz
   else if (Array.isArray(nz) && nz.length) nozzle = Number(nz[0])
-  else if (nz && typeof nz === "object") {
-    if (typeof nz.current === "number") nozzle = nz.current
-    else if (typeof nz.nozzle === "number") nozzle = nz.nozzle
+  else if (nz && !Array.isArray(nz) && typeof nz === "object") {
+    const obj = nz as { current?: number; nozzle?: number }
+    if (typeof obj.current === "number") nozzle = obj.current
+    else if (typeof obj.nozzle === "number") nozzle = obj.nozzle
   }
   return { nozzle, bed }
 }
@@ -43,25 +45,26 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
   const percent: number | null = wsPct?.print_percentage ?? null
   const filamentInfo = useWsTrayType(id)
   const filamentType: string | null = filamentInfo.data?.tray_type ?? null
-  const phaseInfo = useWsPrintPhase(id)
-  const printPhase: string | null = (phaseInfo.data?.print_phase as any) ?? null
+  // const phaseInfo = useWsPrintPhase(id)
+  // const printPhase: string | null = (phaseInfo.data?.print_phase as any) ?? null
   const { nozzle, bed } = getTemps(data)
-  const statusKey: StatusConfigKey =
-    (data?.print_status === "RUNNING" && "printing") ||
-    (data?.print_status === "IDLE" && "idle") ||
-    (data?.print_status === "FINISH" && "finished") ||
-    (data?.print_status === "ERROR" && "error") ||
-    "unknown"
+  const status = data?.print_status || 'unknown';
+  // const statusKey: StatusConfigKey =
+  //   (data?.print_status === "RUNNING" && "printing") ||
+  //   (data?.print_status === "IDLE" && "idle") ||
+  //   (data?.print_status === "FINISH" && "finished") ||
+  //   (data?.print_status === "ERROR" && "error") ||
+  //   "unknown"
 
-  if (isSelected) {
-    return (
-      <PrinterDetail
-        id={id}
-        onClose={() => setSelectedId(null)}
-        className="col-span-1 md:col-span-2"
-      />
-    )
-  }
+  // if (isSelected) {
+  //   return (
+  //     <PrinterDetail
+  //       id={id}
+  //       onClose={() => setSelectedId(null)}
+  //       className="col-span-1 md:col-span-2"
+  //     />
+  //   )
+  // }
 
   return (
     <MotionCard
@@ -80,7 +83,7 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
             <p className="text-xs text-muted-foreground font-mono">{id}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className={statusConfig[statusKey].color}>{statusConfig[statusKey].label}</Badge>
+            <Badge>{status}</Badge>
           </div>
         </div>
         <div>
@@ -91,9 +94,9 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
                 <span className="font-mono text-foreground">{Math.round(percent)}%</span>
               </div>
               <Progress value={percent} />
-              {printPhase && (
-                <div className="text-[11px] text-muted-foreground mt-1 text-left">Current Phase: <span className="text-foreground font-medium">{printPhase}</span></div>
-              )}
+              {/* {printPhase && (
+                <div className="text-[11px] text-muted-foreground mt-1 text-left">Current Phase: <span className="text-foreground font-medium">{status}</span></div>
+              )} */}
             </div>
           ) : (
             <span className="text-xs text-muted-foreground">No active print</span>
@@ -132,9 +135,9 @@ export function PrinterGrid() {
     : 0
 
   // Ensure the expanded (selected) card renders first in the grid
-  const ordered = Array.isArray(printers) ? [...printers] : []
+  const ordered: PrinterListItem[] = Array.isArray(printers) ? [...printers] : []
   if (selectedId) {
-    ordered.sort((a: any, b: any) => {
+    ordered.sort((a: PrinterListItem, b: PrinterListItem) => {
       if (a.id === selectedId) return -1
       if (b.id === selectedId) return 1
       return 0
@@ -154,7 +157,7 @@ export function PrinterGrid() {
       {error && <div className="text-sm text-destructive">{(error as Error).message}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        {ordered?.map((p: any) => (
+        {ordered?.map((p: PrinterListItem) => (
           <GridPrinterCard key={p.id} id={p.id} type={p.type} />
         ))}
         {ordered?.length === 0 && (

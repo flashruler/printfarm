@@ -5,3 +5,5 @@ websockets
 pydantic
 python-dotenv
 bambulabs-api
+python-multipart
+python-multipart

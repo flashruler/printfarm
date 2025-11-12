@@ -4,6 +4,14 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 
 export type PrinterListItem = { id: string; type: string }
+export interface PrinterStatus {
+  bed_temperature?: number | null
+  nozzle_temperatures?: number | number[] | { current?: number; nozzle?: number }
+  print_status?: string | null
+  print_phase?: string | null
+  print_error_code?: number | null
+  has_error?: boolean
+}
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -23,12 +31,12 @@ export function usePrinters() {
 }
 
 export function usePrinterStatus(id: string, enabled: boolean) {
-  return useQuery<any, Error>({
+  return useQuery<PrinterStatus, Error>({
     queryKey: ["printer-status", id],
     queryFn: async () => {
       const res = await fetch(`/api/printers/${id}/status`)
       if (!res.ok) throw new Error("Failed to fetch status")
-      return res.json()
+      return res.json() as Promise<PrinterStatus>
     },
     enabled,
     refetchInterval: 5_000,
@@ -72,13 +80,14 @@ export function usePrinterAction() {
 
 
 // Filament info: fetch once, then rely on WS to push updates when material changes
-export function getFilamentInfo(id: string) {
-  return useQuery<any, Error>({
+export interface FilamentInfo { tray_type?: string | null; error?: string }
+export function useFilamentInfo(id: string) {
+  return useQuery<FilamentInfo, Error>({
     queryKey: ["printer-filament", id],
     queryFn: async () => {
       const res = await fetch(`/api/printers/${id}/filamentinfo`)
       if (!res.ok) throw new Error("Failed to fetch filament info")
-      return res.json()
+      return res.json() as Promise<FilamentInfo>
     },
     enabled: true,
     refetchInterval: false,
@@ -127,18 +136,20 @@ export function useStatusStream(enabled: boolean = true) {
               qc.setQueryData(["printer-printphase", pid], { print_phase: phase, print_error_code: errorCode, has_error: hasError })
             }
             if (Object.prototype.hasOwnProperty.call(msg, 'tray_type')) {
-              const prev: any = qc.getQueryData(["printer-filament", pid])
-              const nextTray = msg.tray_type as any
+              const prev = qc.getQueryData<FilamentInfo | undefined>(["printer-filament", pid])
+              const nextTray = (msg.tray_type as string | null | undefined) ?? null
               const hasNext = typeof nextTray === 'string' && nextTray.trim() !== ''
               // Only write when we have a concrete material string or the server says it changed
               if (hasNext || msg.tray_type_changed) {
                 if (!prev || prev.tray_type !== nextTray) {
-                  qc.setQueryData(["printer-filament", pid], { tray_type: nextTray })
+                  qc.setQueryData(["printer-filament", pid], { tray_type: nextTray } as FilamentInfo)
                 }
               }
             }
           }
-        } catch {}
+        } catch {
+          // ignore malformed WS payloads
+        }
       }
       ws.onclose = () => {
         wsRef.current = null
@@ -166,7 +177,7 @@ export function useWsPercentage(id: string) {
   const qc = useQueryClient()
   return useQuery<{ print_percentage: number | null; error?: string } | undefined>({
     queryKey: ["printer-percentage", id],
-    queryFn: async () => qc.getQueryData(["printer-percentage", id]) as any,
+    queryFn: async () => qc.getQueryData<{ print_percentage: number | null; error?: string }>(["printer-percentage", id]),
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -179,7 +190,7 @@ export function useWsTrayType(id: string) {
   const qc = useQueryClient()
   return useQuery<{ tray_type: string | null; error?: string } | undefined>({
     queryKey: ["printer-filament", id],
-    queryFn: async () => qc.getQueryData(["printer-filament", id]) as any,
+    queryFn: async () => qc.getQueryData<{ tray_type: string | null; error?: string }>(["printer-filament", id]),
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -192,11 +203,58 @@ export function useWsPrintPhase(id: string) {
   const qc = useQueryClient()
   return useQuery<{ print_phase: string | null; error?: string } | undefined>({
     queryKey: ["printer-printphase", id],
-    queryFn: async () => qc.getQueryData(["printer-printphase", id]) as any,
+    queryFn: async () => qc.getQueryData<{ print_phase: string | null; error?: string }>(["printer-printphase", id]),
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     refetchOnMount: false,
+  })
+}
+
+// -------------------------
+// Prints history and upload
+// -------------------------
+export interface PrintJobItem {
+  id: string
+  file_name: string
+  printer_id: string
+  started_at: string
+  uploaded_path?: string
+  status?: string
+  progress?: number | null
+}
+
+export function usePrintHistory() {
+  return useQuery<{ items: PrintJobItem[] }, Error>({
+    queryKey: ["print-history"],
+    queryFn: async () => {
+      const res = await fetch(`/api/prints`)
+      if (!res.ok) throw new Error("Failed to fetch prints")
+      return res.json()
+    },
+    refetchInterval: 4000,
+  })
+}
+
+export function useUploadGcode() {
+  const qc = useQueryClient()
+  return useMutation<{ id: string }, Error, { printerId: string; file: File }>({
+    mutationFn: async ({ printerId, file }) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/printers/${encodeURIComponent(printerId)}/upload`, {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText)
+        throw new Error(text || 'Upload failed')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["print-history"] })
+    }
   })
 }
