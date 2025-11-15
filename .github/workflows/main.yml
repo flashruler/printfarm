@@ -46,9 +46,18 @@ jobs:
         working-directory: ./backend
         run: pyinstaller --clean --noconfirm printfarm.spec
 
+      - name: List packaged files (debug)
+        working-directory: ./backend
+        shell: bash
+        run: |
+          echo "Contents of backend/dist:" && ls -la dist || true
+          echo "Contents of backend/dist/PrintFarm:" && ls -la dist/PrintFarm || true
+
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: PrintFarm-windows-exe
-          path: backend/dist/PrintFarm/**
+          # Upload either one-folder (dist/PrintFarm/...) or one-file (dist/PrintFarm.exe)
+          path: |
+            backend/dist/**
           if-no-files-found: error
