@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # No cache because repo does not commit a lockfile; add frontend/package-lock.json to enable caching
 
 
       - name: Install frontend deps
