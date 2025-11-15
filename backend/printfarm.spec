@@ -6,8 +6,13 @@ from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 
-# Paths
-BACKEND_DIR = Path(__file__).resolve().parent
+# Paths (handle environments where __file__ may be undefined)
+try:
+    _HERE = Path(__file__).resolve().parent  # type: ignore[name-defined]
+except NameError:
+    _HERE = Path.cwd()
+
+BACKEND_DIR = _HERE
 PROJECT_ROOT = BACKEND_DIR.parent
 FRONTEND_DIST = PROJECT_ROOT / 'frontend' / 'dist'
 
