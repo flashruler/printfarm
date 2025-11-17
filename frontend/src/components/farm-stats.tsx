@@ -1,40 +1,63 @@
 import { Card } from "@/components/ui/card"
-import { Cpu, Clock, Activity, AlertTriangle } from "lucide-react"
+import { Cpu, AlertTriangle } from "lucide-react"
+import { usePrinters, usePrinterError} from "@/lib/utils"
+import { useEffect, useState, useCallback } from "react"
+
+// Helper component to check error state for a single printer
+function PrinterErrorChecker({ id, onErrorStateChange }: { id: string; onErrorStateChange: (hasError: boolean) => void }) {
+  const errorState = usePrinterError(id)
+  
+  // Notify parent component when error state changes
+  useEffect(() => {
+    onErrorStateChange(errorState.isError)
+  }, [errorState.isError, onErrorStateChange])
+  
+  return null // This component doesn't render anything
+}
 
 export function FarmStats() {
+    const { data: printers} = usePrinters()
+    const activeCount = Array.isArray(printers)
+    ? printers.length
+    : 0
+    
+    // Track error count across all printers
+    const [errorCounts, setErrorCounts] = useState<Record<string, boolean>>({})
+    
+    const handleErrorStateChange = useCallback((printerId: string, hasError: boolean) => {
+      setErrorCounts(prev => ({ ...prev, [printerId]: hasError }))
+    }, [])
+    
+    const totalErrors = Object.values(errorCounts).filter(Boolean).length
+
   const stats = [
     {
       label: "Active Printers",
-      value: "8/12",
+      value: `${activeCount}/${printers?.length ?? "0"}`,
       change: "+2",
       icon: Cpu,
       color: "text-primary",
     },
     {
-      label: "Total Print Time",
-      value: "47.3h",
-      change: "Today",
-      icon: Clock,
-      color: "text-accent",
-    },
-    {
-      label: "Success Rate",
-      value: "94.2%",
-      change: "+1.2%",
-      icon: Activity,
-      color: "text-accent",
-    },
-    {
       label: "Warnings",
-      value: "2",
-      change: "Active",
+      value: totalErrors.toString(),
+      change: "Active errors",
       icon: AlertTriangle,
       color: "text-destructive",
     },
   ]
-
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <>
+      {/* Hidden error checkers for each printer */}
+      {printers?.map(p => (
+        <PrinterErrorChecker 
+          key={p.id} 
+          id={p.id} 
+          onErrorStateChange={(hasError) => handleErrorStateChange(p.id, hasError)}
+        />
+      ))}
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {stats.map((stat, i) => {
         const Icon = stat.icon
         return (
@@ -55,5 +78,6 @@ export function FarmStats() {
         )
       })}
     </div>
+    </>
   )
 }

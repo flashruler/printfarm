@@ -49,3 +49,7 @@ class PrinterRegistry:
             self.save()
             return True
         return False
+    
+    def get_printer_count(self):
+        """Get the total number of printers in the registry."""
+        return len(self.printers)

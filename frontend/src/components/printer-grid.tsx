@@ -3,10 +3,10 @@
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Thermometer, Droplets } from "lucide-react"
-import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType, type PrinterStatus, type PrinterListItem} from "@/lib/utils"
+import { Thermometer, Droplets, AlertTriangle } from "lucide-react"
+import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType, usePrinterError, type PrinterStatus, type PrinterListItem} from "@/lib/utils"
 import { usePrinterSelection } from "@/lib/printerSelection"
-// import { PrinterDetail } from "./printer-detail"
+import PrinterDetail from "./printer-detail"
 import { motion } from "framer-motion"
 
 // type StatusConfigKey = "printing" | "idle" | "error" | "unknown" | "finished"
@@ -45,6 +45,7 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
   const percent: number | null = wsPct?.print_percentage ?? null
   const filamentInfo = useWsTrayType(id)
   const filamentType: string | null = filamentInfo.data?.tray_type ?? null
+  const errorState = usePrinterError(id)
   // const phaseInfo = useWsPrintPhase(id)
   // const printPhase: string | null = (phaseInfo.data?.print_phase as any) ?? null
   const { nozzle, bed } = getTemps(data)
@@ -56,15 +57,15 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
   //   (data?.print_status === "ERROR" && "error") ||
   //   "unknown"
 
-  // if (isSelected) {
-  //   return (
-  //     <PrinterDetail
-  //       id={id}
-  //       onClose={() => setSelectedId(null)}
-  //       className="col-span-1 md:col-span-2"
-  //     />
-  //   )
-  // }
+  if (isSelected) {
+    return (
+      <PrinterDetail
+        id={id}
+        onClose={() => setSelectedId(null)}
+        className="col-span-1 md:col-span-2"
+      />
+    )
+  }
 
   return (
     <MotionCard
@@ -74,7 +75,11 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
       initial={{ opacity: 0.9 }}
       animate={{ opacity: 1 }}
       transition={{ layout: { duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }, duration: 0.2 }}
-      className="p-4 bg-card border-border transition-all duration-200 ease-out cursor-pointer hover:shadow-md hover:border-primary/50"
+      className={`p-4 bg-card transition-all duration-200 ease-out cursor-pointer hover:shadow-md ${
+        errorState.isError 
+          ? 'border-2 border-destructive hover:border-destructive/70' 
+          : 'border-border hover:border-primary/50'
+      }`}
     >
       <div className="space-y-3">
         <div className="flex items-start justify-between">
@@ -83,9 +88,23 @@ function GridPrinterCard({ id, type }: { id: string; type: string }) {
             <p className="text-xs text-muted-foreground font-mono">{id}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge>{status}</Badge>
+            {errorState.isError && (
+              <Badge className="flex items-center gap-1 bg-destructive text-destructive-foreground">
+                <AlertTriangle className="w-3 h-3" />
+                Error
+              </Badge>
+            )}
+            <Badge variant={errorState.isError ? "outline" : "default"}>{status}</Badge>
           </div>
         </div>
+        
+        {errorState.isError && errorState.errorReason && (
+          <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 border border-destructive/30 text-destructive text-xs">
+            <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+            <span>{errorState.errorReason}</span>
+          </div>
+        )}
+        
         <div>
           {typeof percent === 'number' ? (
             <div className="space-y-1">

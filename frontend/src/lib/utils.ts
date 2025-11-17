@@ -1,14 +1,13 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 
 export type PrinterListItem = { id: string; type: string }
 export interface PrinterStatus {
   bed_temperature?: number | null
   nozzle_temperatures?: number | number[] | { current?: number; nozzle?: number }
   print_status?: string | null
-  print_phase?: string | null
   print_error_code?: number | null
   has_error?: boolean
 }
@@ -129,11 +128,6 @@ export function useStatusStream(enabled: boolean = true) {
             }
             if (msg.status) {
               qc.setQueryData(["printer-status", pid], msg.status)
-              // Also cache print phase & error info separately for lightweight reads
-              const phase = msg.status.print_phase || msg.status.print_status || null
-              const errorCode = msg.status.print_error_code ?? null
-              const hasError = msg.status.has_error ?? (typeof errorCode === 'number' && errorCode !== 0)
-              qc.setQueryData(["printer-printphase", pid], { print_phase: phase, print_error_code: errorCode, has_error: hasError })
             }
             if (Object.prototype.hasOwnProperty.call(msg, 'tray_type')) {
               const prev = qc.getQueryData<FilamentInfo | undefined>(["printer-filament", pid])
@@ -175,9 +169,14 @@ export function useStatusStream(enabled: boolean = true) {
 // Read WS-fed percentage from cache without making a network request
 export function useWsPercentage(id: string) {
   const qc = useQueryClient()
-  return useQuery<{ print_percentage: number | null; error?: string } | undefined>({
+  return useQuery<{ print_percentage: number | null; error?: string }>({
     queryKey: ["printer-percentage", id],
-    queryFn: async () => qc.getQueryData<{ print_percentage: number | null; error?: string }>(["printer-percentage", id]),
+    // Always return a non-undefined value to satisfy TanStack Query v5
+    queryFn: async () =>
+      qc.getQueryData<{ print_percentage: number | null; error?: string }>([
+        "printer-percentage",
+        id,
+      ]) ?? { print_percentage: null },
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -188,9 +187,14 @@ export function useWsPercentage(id: string) {
 // Read WS-fed tray type from cache without making a network request
 export function useWsTrayType(id: string) {
   const qc = useQueryClient()
-  return useQuery<{ tray_type: string | null; error?: string } | undefined>({
+  return useQuery<{ tray_type: string | null; error?: string }>({
     queryKey: ["printer-filament", id],
-    queryFn: async () => qc.getQueryData<{ tray_type: string | null; error?: string }>(["printer-filament", id]),
+    // Always return a non-undefined value to satisfy TanStack Query v5
+    queryFn: async () =>
+      qc.getQueryData<{ tray_type: string | null; error?: string }>([
+        "printer-filament",
+        id,
+      ]) ?? { tray_type: null },
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -201,15 +205,111 @@ export function useWsTrayType(id: string) {
 
 export function useWsPrintPhase(id: string) {
   const qc = useQueryClient()
-  return useQuery<{ print_phase: string | null; error?: string } | undefined>({
+  return useQuery<{ print_phase: string | null; error?: string }>({
     queryKey: ["printer-printphase", id],
-    queryFn: async () => qc.getQueryData<{ print_phase: string | null; error?: string }>(["printer-printphase", id]),
+    // Always return a non-undefined value to satisfy TanStack Query v5
+    queryFn: async () =>
+      qc.getQueryData<{ print_phase: string | null; error?: string }>([
+        "printer-printphase",
+        id,
+      ]) ?? { print_phase: null },
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     refetchOnMount: false,
   })
+}
+
+// -------------------------
+// Error detection with time-gating
+// -------------------------
+interface ErrorState {
+  isError: boolean
+  errorReason: string | null
+  errorType: 'timeout' | 'explicit' | null
+}
+
+// Statuses that shouldn't take too long (in seconds)
+const TIMEOUT_THRESHOLDS: Record<string, number> = {
+  'HOMING_TOOLHEAD': 60,           // 1 minute
+  'AUTO_BED_LEVELING': 180,        // 3 minutes
+  'HEATING_HOTEND': 300,           // 5 minutes
+  'HEATBED_PREHEATING': 300,       // 5 minutes
+  'CLEANING_NOZZLE_TIP': 120,      // 2 minutes
+  'CHANGING_FILAMENT': 600,        // 10 minutes
+  'FILAMENT_LOADING': 180,         // 3 minutes
+  'FILAMENT_UNLOADING': 180,       // 3 minutes
+}
+
+// Statuses that explicitly indicate errors
+const ERROR_STATUSES = new Set([
+  'PAUSED_CUTTER_ERROR',
+  'PAUSED_FIRST_LAYER_ERROR',
+  'PAUSED_NOZZLE_CLOG',
+  'PAUSED_NOZZLE_TEMPERATURE_MALFUNCTION',
+  'PAUSED_HEAT_BED_TEMPERATURE_MALFUNCTION',
+  'PAUSED_CHAMBER_TEMPERATURE_CONTROL_ERROR',
+  'PAUSED_AMS_LOST',
+  'PAUSED_LOW_FAN_SPEED_HEAT_BREAK',
+  'PAUSED_SKIPPED_STEP',
+  'PAUSED_NOZZLE_FILAMENT_COVERED_DETECTED',
+  'PAUSED_FILAMENT_RUNOUT',
+  'PAUSED_FRONT_COVER_FALLING',
+])
+
+export function usePrinterError(id: string): ErrorState {
+  const { data: status } = usePrinterStatus(id, true)
+  const [timeoutState, setTimeoutState] = useState<{
+    status: string | null
+    startTime: number | null
+  }>({ status: null, startTime: null })
+
+  const currentStatus = status?.print_status || null
+  const hasErrorCode = typeof status?.print_error_code === 'number' && status.print_error_code !== 0
+  const hasErrorFlag = status?.has_error === true
+
+  useEffect(() => {
+    if (!currentStatus) {
+      setTimeoutState({ status: null, startTime: null })
+      return
+    }
+
+    // If status changed, reset timer
+    if (currentStatus !== timeoutState.status) {
+      setTimeoutState({ status: currentStatus, startTime: Date.now() })
+    }
+  }, [currentStatus, timeoutState.status])
+
+  // Check for explicit errors
+  const isExplicitError = ERROR_STATUSES.has(currentStatus || '') || hasErrorCode || hasErrorFlag
+  if (isExplicitError) {
+    return {
+      isError: true,
+      errorReason: currentStatus || 'Unknown error',
+      errorType: 'explicit'
+    }
+  }
+
+  // Check for timeout errors
+  if (currentStatus && TIMEOUT_THRESHOLDS[currentStatus] && timeoutState.startTime) {
+    const elapsed = (Date.now() - timeoutState.startTime) / 1000
+    const threshold = TIMEOUT_THRESHOLDS[currentStatus]
+    
+    if (elapsed > threshold) {
+      return {
+        isError: true,
+        errorReason: `${currentStatus} taking longer than expected (>${threshold}s)`,
+        errorType: 'timeout'
+      }
+    }
+  }
+
+  return {
+    isError: false,
+    errorReason: null,
+    errorType: null
+  }
 }
 
 // -------------------------

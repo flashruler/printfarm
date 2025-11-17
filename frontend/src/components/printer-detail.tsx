@@ -2,8 +2,8 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Thermometer, Droplets, AlertCircle, XCircle, PauseCircle, PlayCircle, House, Upload } from 'lucide-react';
-import { usePrinterStatus, useFilamentInfo, useWsPercentage, usePrinterAction, useUploadGcode  } from '@/lib/utils';
+import { Thermometer, AlertCircle, XCircle, PauseCircle, PlayCircle, House, Upload, AlertTriangle } from 'lucide-react';
+import { usePrinterStatus, useFilamentInfo, useWsPercentage, usePrinterAction, useUploadGcode, usePrinterError  } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useRef, useState } from 'react';
 
@@ -11,6 +11,7 @@ const MotionCard = motion(Card);
 
 export function PrinterDetail({ id, onClose, className = "" }: { id: string; onClose: () => void; className?: string }) {
   const { data, isLoading, error } = usePrinterStatus(id, true);
+  const errorState = usePrinterError(id);
 
   const bed = typeof data?.bed_temperature === 'number' ? data?.bed_temperature : null;
   const nz = data?.nozzle_temperatures;
@@ -39,17 +40,42 @@ export function PrinterDetail({ id, onClose, className = "" }: { id: string; onC
       layoutId={`printer-${id}`}
       layout
       transition={{ layout: { duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }, duration: 0.2 }}
-      className={`p-6 border-primary/70 shadow-lg space-y-4 ${className}`}
+      className={`p-6 shadow-lg space-y-4 ${
+        errorState.isError 
+          ? 'border-2 border-destructive' 
+          : 'border-primary/70'
+      } ${className}`}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold">Printer: {id}</h2>
-          <Badge variant="outline" className="font-mono capitalize">{status}</Badge>
+          <div className="flex items-center gap-2">
+            {errorState.isError && (
+              <Badge className="flex items-center gap-1 bg-destructive text-destructive-foreground">
+                <AlertTriangle className="w-3 h-3" />
+                Error
+              </Badge>
+            )}
+            <Badge variant="outline" className="font-mono capitalize">{status}</Badge>
+          </div>
         </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
           <XCircle className="w-5 h-5" />
         </button>
       </div>
+
+      {errorState.isError && errorState.errorReason && (
+        <div className="flex items-start gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-destructive">
+          <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <div className="font-medium">Printer Error Detected</div>
+            <div className="text-sm">{errorState.errorReason}</div>
+            {errorState.errorType === 'timeout' && (
+              <div className="text-xs opacity-80">This operation is taking longer than expected. The printer may need attention.</div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2 text-left">
@@ -58,10 +84,10 @@ export function PrinterDetail({ id, onClose, className = "" }: { id: string; onC
           <div className="text-sm font-mono">Bed: {bed ?? '-'}°C</div>
           <div className="text-sm font-mono">Material: {filament_info.data?.tray_type ?? '-'}</div>
         </div>
-        <div className="space-y-2">
+        {/* <div className="space-y-2">
           <h3 className="text-sm font-medium flex items-center gap-2"><Droplets className="w-4 h-4" /> Material</h3>
           <div className="text-sm text-muted-foreground">{filament_info.data?.tray_type ?? '-'}</div>
-        </div>
+        </div> */}
       </div>
 
       {typeof percent === 'number' && (

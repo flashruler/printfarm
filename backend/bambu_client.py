@@ -55,9 +55,14 @@ class BambuPrinter:
             status = {}
             status['bed_temperature'] = self.client.get_bed_temperature()
             status['nozzle_temperatures'] = self.client.get_nozzle_temperature()
-            raw_state = self.client.get_state()
-            status['print_status'] = _status_to_string(raw_state)
-            status.update(_normalize_print_status(raw_state))
+            
+            # Use get_print_status_raw to retrieve state
+            raw_status_data = await self.get_print_status_raw()
+            if 'error' not in raw_status_data:
+                status['print_status'] = raw_status_data.get('print_status')
+            else:
+                status['print_status'] = None
+            
             # Error code (0 means normal per API docs)
             try:
                 err = self.client.print_error_code()
@@ -66,14 +71,40 @@ class BambuPrinter:
             status['print_error_code'] = err
             if isinstance(err, int) and err != 0:
                 status['has_error'] = True
-                # If error present, prefer phase=error
-                status['print_phase'] = 'error'
             else:
                 status['has_error'] = False
             #status['current_state'] = self.client.get_current_state()
             return status
         except Exception as e:
             return {"error": str(e)}
+
+    async def get_print_status_raw(self) -> dict:
+        """Return the Bambu PrintStatus as a raw enum name string.
+
+        Example: {"print_status": "PAUSED_CUTTER_ERROR"}
+        
+        Uses get_current_state() which returns PrintStatus enum, not get_state() which returns GcodeState.
+        """
+        try:
+            await self.connect()
+            # Use get_current_state() for PrintStatus enum (not get_state() which returns GcodeState)
+            state = self.client.get_current_state()
+            
+            # Handle PrintStatus enum
+            if isinstance(state, PrintStatus):
+                return {"print_status": state.name}
+            
+            # Handle objects with a name attribute
+            if hasattr(state, 'name'):
+                return {"print_status": str(state.name)}
+            
+            # Handle plain strings
+            if isinstance(state, str):
+                return {"print_status": state.upper()}
+            
+            return {"print_status": None}
+        except Exception as e:
+            return {"error": str(e), "print_status": None}
 
 #gets filament info of a bambulab printer
     async def get_filament_info(self):
@@ -181,6 +212,11 @@ def _status_to_string(state: Any) -> Optional[str]:
 
 def _normalize_print_status(state: Any) -> dict:
     raw = _status_to_string(state)
+    return _normalize_print_status_from_name(raw)
+
+
+def _normalize_print_status_from_name(raw: Optional[str]) -> dict:
+    """Normalize a print status string name to phase and raw status."""
     phase = 'unknown'
     if raw is None:
         return {"print_status_raw": None, "print_phase": phase}

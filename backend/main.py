@@ -9,6 +9,7 @@ import asyncio
 from dotenv import load_dotenv
 import time
 import os
+import sys
 from typing import Any, Dict, List
 from uuid import uuid4
 from datetime import datetime, timezone
@@ -269,6 +270,16 @@ async def get_printer_status(printer_id: str):
         return await printer.get_status()
     raise HTTPException(400, "Printer does not support status retrieval")
 
+# raw PrintStatus name string (e.g., "PAUSED_CUTTER_ERROR")
+@app.get("/api/printers/{printer_id}/status_raw")
+async def get_printer_status_raw(printer_id: str):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    if hasattr(printer, "get_print_status_raw"):
+        return await printer.get_print_status_raw()
+    raise HTTPException(400, "Printer does not support raw status retrieval")
+
 # print percentage (REST fallback, still available if WS not used)
 @app.get("/api/printers/{printer_id}/percentage")
 async def get_printer_percentage(printer_id: str):
@@ -440,29 +451,69 @@ async def cancel_print(printer_id: str):
 # Static frontend serving (supports Vite default 'dist' or 'build')
 # -------------------
 def _detect_frontend_root() -> Path | None:
-    root = Path(__file__).parent.parent / "frontend"
-    for candidate in ("dist", "build"):
-        p = root / candidate
-        if p.exists() and (p / "index.html").exists():
-            return p
+    """Detect the built frontend root both in source tree and in PyInstaller bundle.
+
+    Checks typical Vite folders (dist, build) under the project tree and within
+    the PyInstaller extraction directory (sys._MEIPASS) if present.
+    """
+    candidates: list[Path] = []
+
+    # Source tree paths
+    project_root = Path(__file__).parent.parent
+    src_frontend = project_root / "frontend"
+    candidates += [src_frontend / "dist", src_frontend / "build"]
+
+    # PyInstaller one-file/one-folder extraction paths
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        base_path = Path(base)
+        candidates += [
+            base_path / "frontend" / "dist",
+            base_path / "frontend" / "build",
+            base_path / "dist",
+            base_path / "build",
+        ]
+
+    for p in candidates:
+        try:
+            if p.exists() and (p / "index.html").exists():
+                return p
+        except Exception:
+            continue
     return None
 
 frontend_dir = _detect_frontend_root()
-if frontend_dir:
-    # Mount /static if subfolder exists (Vite puts assets under assets/ by default)
-    static_dir = frontend_dir / "static"
-    assets_dir = frontend_dir / "assets"
-    if static_dir.exists():
-        app.mount("/static", StaticFiles(directory=static_dir), name="static")
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+def _ensure_frontend_mounts():
+    global frontend_dir
+    # Re-detect if not found yet (e.g., in packaged environments)
+    if not frontend_dir or not (frontend_dir / "index.html").exists():
+        frontend_dir = _detect_frontend_root()
+    if frontend_dir and (frontend_dir / "index.html").exists():
+        # Mount /static and /assets dynamically if present
+        static_dir = frontend_dir / "static"
+        assets_dir = frontend_dir / "assets"
+        # FastAPI allows mounting after app creation; repeated mounts with same name raise, so guard by path
+        try:
+            if static_dir.exists():
+                app.mount("/static", StaticFiles(directory=static_dir), name="static")
+        except Exception:
+            pass
+        try:
+            if assets_dir.exists():
+                app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+        except Exception:
+            pass
+
+# Attempt mounts at import time
+_ensure_frontend_mounts()
 
 @app.get("/{path:path}")
 async def serve_react_app(path: str):
-    if frontend_dir:
-        index_path = frontend_dir / "index.html"
-        if index_path.exists():
-            return FileResponse(index_path)
+    # Re-check mounts and location on each request to be robust in packaged mode
+    _ensure_frontend_mounts()
+    if frontend_dir and (frontend_dir / "index.html").exists():
+        return FileResponse(frontend_dir / "index.html")
     return {"detail": "Frontend not built"}
 
 # WebSocket endpoint for streaming updates

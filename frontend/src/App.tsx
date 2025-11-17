@@ -5,7 +5,7 @@ import { FarmStats } from './components/farm-stats';
 import { PrinterGrid } from './components/printer-grid';
 // import { JobQueue } from './components/job-queue';
 // import { MaterialUsage } from './components/material-usage';
-import { PrintHistory } from './components/print-history';
+// import { PrintHistory } from './components/print-history';
 import './App.css'
 import { useStatusStream } from '@/lib/utils'
 
@@ -29,7 +29,7 @@ function App() {
           <PrinterGrid />
         </div>
         <div className="space-y-6">
-          <PrintHistory />
+          {/* <PrintHistory /> */}
           {/* <MaterialUsage /> */}
         </div>
       </div>
