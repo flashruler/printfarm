@@ -1,6 +1,6 @@
 # printfarm
 
-## CURRENTLY IN PRE-ALPHA WITH ONLY LIMITED BAMBULAB PRINTER SUPPORT
+## CURRENTLY IN PRE-ALPHA
 Currently supported printers:
  - A1 & A1 Mini
  - P1P, P1S, X1
@@ -10,15 +10,19 @@ Currently supported printers:
 Lightweight, open-source print job manager and queue for local network printers.
 
 printfarm provides a simple API and web UI to submit, monitor, and manage print jobs across multiple printers. Designed for small teams, labs, and makerspaces that need a reliable, auditable print pipeline.
-
+## Current Features
+- Basic compatibility with Bambulab printers.
+- Printer farm vitals and error notifications.
+- Fastapi backend and webui.
 
 ## Planned Features
 - Compatibility with Bambulab, Mainsail, Prusa, and Octoprint enabled printers.
+- Camera support
 - Detailed printer status
-- Job submission via HTTP API and webui.
+- Standalone desktop application
+- Linux/MacOS Support
 - Queueing, prioritization, and retry policies
 - Per-printer configuration and status reporting
-- Optional web dashboard for monitoring and basic control
 - Audit logs and basic metrics
 
 ## Quick start
@@ -52,12 +56,6 @@ npm start
 ``` -->
 
 ## Development
-- Run tests:
-```
-npm test
-# or
-pytest
-```
 - Start a local development server with hot reload:
 ```
 npm run dev
@@ -74,8 +72,6 @@ Contributions are welcome. Please:
 - Follow the repository coding style and tests
 - Submit pull requests against the `main` branch
 - Add or update documentation and tests for new features
-
-See CONTRIBUTING.md for details.
 
 ## Security
 Report security issues via the repository's security policy or contact the maintainers directly. Do not disclose vulnerabilities in open issues.
