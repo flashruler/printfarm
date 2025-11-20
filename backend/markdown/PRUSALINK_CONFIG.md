@@ -2,11 +2,7 @@
 
 Complete PrusaLink adapter following the PrintFarm adapter pattern.
 
-## Files Created
-
-1. **`printers/prusalink.py`** - Main adapter implementation
-2. **`printers/PRUSALINK_CONFIG.md`** - Configuration guide
-3. **`test_prusalink.py`** - Test script
+Currently untested (I don't own a Prusa)
 
 ## Quick Start
 
