@@ -2,13 +2,52 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePrinters, usePrinterStatus } from '@/lib/utils';
 
-interface AddPrinterPayload {
+type PrinterType = 'bambu' | 'prusalink' | 'octoprint';
+
+interface BasePrinterPayload {
   id: string;
+  type: PrinterType;
+}
+
+interface BambuPayload extends BasePrinterPayload {
   type: 'bambu';
   ip: string;
   access_code: string;
   serial: string;
 }
+
+interface PrusaLinkPayload extends BasePrinterPayload {
+  type: 'prusalink';
+  url: string;
+  username: string;
+  password: string;
+}
+
+interface OctoPrintPayload extends BasePrinterPayload {
+  type: 'octoprint';
+  url: string;
+  api_key: string;
+}
+
+type AddPrinterPayload = BambuPayload | PrusaLinkPayload | OctoPrintPayload;
+
+// Field definitions for each printer type
+const PRINTER_FIELDS: Record<PrinterType, Array<{ name: string; label: string; placeholder: string; type?: string }>> = {
+  bambu: [
+    { name: 'ip', label: 'IP Address', placeholder: '192.168.1.100' },
+    { name: 'access_code', label: 'Access Code', placeholder: '12345678' },
+    { name: 'serial', label: 'Serial Number', placeholder: 'ABC123XYZ' },
+  ],
+  prusalink: [
+    { name: 'url', label: 'URL', placeholder: 'http://192.168.1.150' },
+    { name: 'username', label: 'Username', placeholder: 'maker' },
+    { name: 'password', label: 'Password', placeholder: 'password', type: 'password' },
+  ],
+  octoprint: [
+    { name: 'url', label: 'URL', placeholder: 'http://192.168.1.200' },
+    { name: 'api_key', label: 'API Key', placeholder: 'Your OctoPrint API key', type: 'password' },
+  ],
+};
 
 // Fetch list of printers
 
@@ -53,13 +92,8 @@ function PrinterRow({ id, type, onRemove }: { id: string; type: string; onRemove
 export const PrinterManager = () => {
   const qc = useQueryClient();
   const { data: printers, isLoading, error } = usePrinters();
-  const [form, setForm] = useState<AddPrinterPayload>({
-    id: '',
-    type: 'bambu',
-    ip: '',
-    access_code: '',
-    serial: '',
-  });
+  const [printerType, setPrinterType] = useState<PrinterType>('bambu');
+  const [formData, setFormData] = useState<Record<string, string>>({ id: '' });
 
   const addMutation = useMutation({
     mutationFn: async (payload: AddPrinterPayload) => {
@@ -73,7 +107,7 @@ export const PrinterManager = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['printers'] });
-      setForm({ id: '', type: 'bambu', ip: '', access_code: '', serial: '' });
+      setFormData({ id: '' });
     },
   });
 
@@ -86,51 +120,94 @@ export const PrinterManager = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['printers'] }),
   });
 
+  const handleTypeChange = (newType: PrinterType) => {
+    setPrinterType(newType);
+    setFormData({ id: formData.id || '' }); // Keep ID, reset other fields
+  };
+
+  const handleFieldChange = (fieldName: string, value: string) => {
+    setFormData({ ...formData, [fieldName]: value });
+  };
+
+  const isFormValid = () => {
+    if (!formData.id) return false;
+    const fields = PRINTER_FIELDS[printerType];
+    return fields.every(field => formData[field.name]?.trim());
+  };
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.id || !form.ip || !form.access_code || !form.serial) return;
-    addMutation.mutate(form);
+    if (!isFormValid()) return;
+    
+    const payload = {
+      id: formData.id,
+      type: printerType,
+      ...formData,
+    } as AddPrinterPayload;
+    
+    addMutation.mutate(payload);
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold mb-2">Add Printer</h2>
-        <form onSubmit={onSubmit} className="grid gap-2 md:grid-cols-5">
-          <input
-            placeholder="ID"
-            className="border rounded px-2 py-1"
-            value={form.id}
-            onChange={(e) => setForm({ ...form, id: e.target.value })}
-          />
-          <input
-            placeholder="IP"
-            className="border rounded px-2 py-1"
-            value={form.ip}
-            onChange={(e) => setForm({ ...form, ip: e.target.value })}
-          />
-            <input
-            placeholder="Access Code"
-            className="border rounded px-2 py-1"
-            value={form.access_code}
-            onChange={(e) => setForm({ ...form, access_code: e.target.value })}
-          />
-          <input
-            placeholder="Serial"
-            className="border rounded px-2 py-1"
-            value={form.serial}
-            onChange={(e) => setForm({ ...form, serial: e.target.value })}
-          />
+        
+        {/* Printer Type Selector */}
+        <div className="mb-3">
+          <label className="block text-sm font-medium mb-1">Printer Type</label>
+          <select
+            value={printerType}
+            onChange={(e) => handleTypeChange(e.target.value as PrinterType)}
+            className="border rounded px-3 py-2 w-full md:w-64"
+          >
+            <option value="bambu">Bambu Lab</option>
+            <option value="prusalink">Prusa (PrusaLink)</option>
+            <option value="octoprint">OctoPrint</option>
+          </select>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-3">
+          {/* Printer ID - always shown */}
+          <div className="grid gap-2 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium mb-1">Printer ID</label>
+              <input
+                placeholder="e.g., bambu1, prusa_mk4"
+                className="border rounded px-3 py-2 w-full"
+                value={formData.id || ''}
+                onChange={(e) => handleFieldChange('id', e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Dynamic fields based on printer type */}
+          <div className="grid gap-2 md:grid-cols-2">
+            {PRINTER_FIELDS[printerType].map((field) => (
+              <div key={field.name}>
+                <label className="block text-sm font-medium mb-1">{field.label}</label>
+                <input
+                  type={field.type || 'text'}
+                  placeholder={field.placeholder}
+                  className="border rounded px-3 py-2 w-full"
+                  value={formData[field.name] || ''}
+                  onChange={(e) => handleFieldChange(field.name, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+
           <button
             type="submit"
-            disabled={addMutation.isPending}
-            className="bg-blue-600 text-white rounded px-3 py-1 disabled:opacity-50"
+            disabled={addMutation.isPending || !isFormValid()}
+            className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {addMutation.isPending ? 'Adding...' : 'Add'}
+            {addMutation.isPending ? 'Adding...' : 'Add Printer'}
           </button>
         </form>
+        
         {addMutation.error && (
-          <p className="text-sm text-red-600">{(addMutation.error as Error).message}</p>
+          <p className="text-sm text-red-600 mt-2">{(addMutation.error as Error).message}</p>
         )}
       </div>
 

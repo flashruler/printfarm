@@ -3,7 +3,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pathlib import Path
-from bambu_client import BambuPrinter
 from registry import PrinterRegistry
 import asyncio
 from dotenv import load_dotenv
@@ -270,6 +269,29 @@ async def get_printer_status(printer_id: str):
         return await printer.get_status()
     raise HTTPException(400, "Printer does not support status retrieval")
 
+# capability listing of a specific printer
+@app.get("/api/printers/{printer_id}/capabilities")
+async def get_printer_capabilities(printer_id: str):
+    printer = registry.printers.get(printer_id)
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+    caps = getattr(printer, "capabilities", None)
+    if caps is None:
+        # Fallback heuristic from available attributes
+        caps = {
+            "status": hasattr(printer, "get_status"),
+            "percentage": hasattr(printer, "get_percentage"),
+            "filament": hasattr(printer, "get_filament_info"),
+            "home": hasattr(printer, "home"),
+            "pause": hasattr(printer, "pause"),
+            "resume": hasattr(printer, "resume"),
+            "cancel": hasattr(printer, "cancel"),
+            "gcode": hasattr(printer, "send_gcode"),
+            "jog_xy": hasattr(printer, "send_gcode"),
+            "move_z": hasattr(printer, "send_gcode"),
+        }
+    return caps
+
 # raw PrintStatus name string (e.g., "PAUSED_CUTTER_ERROR")
 @app.get("/api/printers/{printer_id}/status_raw")
 async def get_printer_status_raw(printer_id: str):
@@ -351,6 +373,8 @@ def list_print_history():
             jcopy["printer_state"] = state
         items.append(jcopy)
     return {"items": items}
+
+
 
 #home printer
 @app.post("/api/printers/{printer_id}/home")

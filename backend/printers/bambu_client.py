@@ -34,6 +34,8 @@ def _to_plain(obj: Any) -> Any:
 
 # Bambulab printer class and associated methods
 class BambuPrinter:
+    type = "bambu"
+
     def __init__(self,ip:str,access_code:str, serial:str):
         # Persist credentials and identifiers for saving/serialization
         self.ip = ip
@@ -62,6 +64,9 @@ class BambuPrinter:
                 status['print_status'] = raw_status_data.get('print_status')
             else:
                 status['print_status'] = None
+            # Normalize phase for UI
+            norm = _normalize_print_status_from_name(status.get('print_status'))
+            status.update(norm)
             
             # Error code (0 means normal per API docs)
             try:
@@ -195,6 +200,31 @@ class BambuPrinter:
             return {"status": "success", "action": "cancel"}
         except Exception as e:
             return {"error": str(e), "action": "cancel"}
+    
+    # Raw G-code passthrough
+    async def send_gcode(self, gcode: str | list[str], gcode_check: bool = True):
+        try:
+            await self.connect()
+            ok = self.client.gcode(gcode, gcode_check=gcode_check)
+            return {"ok": bool(ok)}
+        except Exception as e:
+            return {"error": str(e)}
+
+    @property
+    def capabilities(self):
+        return {
+            "status": True,
+            "percentage": True,
+            "filament": True,
+            "error_codes": True,
+            "home": True,
+            "pause": True,
+            "resume": True,
+            "cancel": True,
+            "gcode": True,
+            "jog_xy": True,  # via G-code G0/G1
+            "move_z": True,   # via move_z_axis API or G-code
+        }
     
 
 def _status_to_string(state: Any) -> Optional[str]:
