@@ -132,43 +132,43 @@ export function PrinterDetail({
             Material: {filament_info.data?.tray_type ?? "-"}
           </div>
           <div className="pt-2 border-t border-border space-y-2">
-        <h3 className="text-sm font-medium">Upload G-code</h3>
-        <div className="flex items-center gap-2">
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".gcode,.g,.nc"
-            className="hidden"
-            onChange={onFileChosen}
-          />
-          <button
-            className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70"
-            onClick={onPick}
-          >
-            <Upload className="w-4 h-4" /> Choose File
-          </button>
-          <span className="text-xs text-muted-foreground truncate max-w-48">
-            {selectedName || "No file selected"}
-          </span>
-          <button
-            className="text-sm px-3 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            disabled={!selectedName || upload.isPending}
-            onClick={onUpload}
-          >
-            {upload.isPending ? "Uploading…" : "Upload & Print"}
-          </button>
-        </div>
-        {upload.isError && (
-          <div className="text-xs text-destructive">
-            {String(upload.error?.message || "Upload failed")}
+            <h3 className="text-sm font-medium">Upload G-code</h3>
+            <div className="flex items-center gap-2">
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".gcode,.g,.nc"
+                className="hidden"
+                onChange={onFileChosen}
+              />
+              <button
+                className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70"
+                onClick={onPick}
+              >
+                <Upload className="w-4 h-4" /> Choose File
+              </button>
+              <span className="text-xs text-muted-foreground truncate max-w-48">
+                {selectedName || "No file selected"}
+              </span>
+              <button
+                className="text-sm px-3 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                disabled={!selectedName || upload.isPending}
+                onClick={onUpload}
+              >
+                {upload.isPending ? "Uploading…" : "Upload & Print"}
+              </button>
+            </div>
+            {upload.isError && (
+              <div className="text-xs text-destructive">
+                {String(upload.error?.message || "Upload failed")}
+              </div>
+            )}
+            {upload.isSuccess && (
+              <div className="text-xs text-green-600">
+                Started print: {selectedName}
+              </div>
+            )}
           </div>
-        )}
-        {upload.isSuccess && (
-          <div className="text-xs text-green-600">
-            Started print: {selectedName}
-          </div>
-        )}
-      </div>
         </div>
         {/* <div className="space-y-2">
           <h3 className="text-sm font-medium flex items-center gap-2"><Droplets className="w-4 h-4" /> Material</h3>
@@ -176,6 +176,19 @@ export function PrinterDetail({
         </div> */}
 
         <div className="space-y-2 flex flex-col">
+          {status.toLowerCase() === "idle" ? (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              No active prints
+            </div>
+          ) : typeof percent === "number" ? (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Progress</span>
+                <span className="font-mono">{Math.round(percent)}%</span>
+              </div>
+              <Progress value={percent} />
+            </div>
+          ) : null}
           <div className="pt-2 border-t border-border space-y-2">
             <h3 className="text-sm font-medium">Controls</h3>
             <div className="flex gap-3">
@@ -240,8 +253,11 @@ export function PrinterDetail({
                 <Button variant="outline">
                   <ArrowLeft className="w-4 h-4" />
                 </Button>
-                <Button variant="outline" onClick={() => runAction({ id, action: "home" })}
-                disabled={isPending}>
+                <Button
+                  variant="outline"
+                  onClick={() => runAction({ id, action: "home" })}
+                  disabled={isPending}
+                >
                   <House className="w-4 h-4" />
                 </Button>
                 <Button variant="outline">
@@ -277,23 +293,11 @@ export function PrinterDetail({
         </div>
       </div>
 
-      {typeof percent === "number" && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Progress</span>
-            <span className="font-mono">{Math.round(percent)}%</span>
-          </div>
-          <Progress value={percent} />
-        </div>
-      )}
-
       {status === "error" && (
         <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 border border-destructive/30 text-destructive text-sm">
           <AlertCircle className="w-4 h-4" /> Printer reports an error.
         </div>
       )}
-
-      
 
       <div className="text-xs text-muted-foreground">
         {isLoading && "Loading detailed status..."}

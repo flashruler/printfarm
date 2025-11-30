@@ -4,17 +4,23 @@ This guide walks through adding support for a new printer type (e.g., Prusa, Kli
 
 ## Architecture Overview
 
-PrintFarm uses an **adapter pattern** where each printer family implements a common interface defined in `backend/printers/base.py`. The registry dynamically loads adapters based on the `type` field in the printer configuration.
+PrintFarm uses an **adapter pattern** where each printer family inherits from the `PrinterAdapter` abstract base class defined in `backend/printers/base.py`. The registry dynamically loads adapters based on the `type` field in the printer configuration.
 
 ```
 backend/
 ├── printers/
-│   ├── base.py           # PrinterAdapter protocol (interface)
-│   ├── bambu_adapter.py  # Reference implementation (Bambu)
+│   ├── base.py           # PrinterAdapter ABC (abstract base class)
+│   ├── bambu_client.py   # Reference implementation (Bambu)
 │   └── your_printer.py   # Your new adapter
 ├── registry.py           # Type-aware printer factory
 └── main.py              # REST/WS API (adapter-agnostic)
 ```
+
+**Key Benefits:**
+- Type safety through abstract methods
+- Guaranteed API compatibility across all printer types
+- Clear contract for implementing new adapters
+- IDE autocomplete and type checking support
 
 ## Step-by-Step Guide
 
@@ -25,8 +31,9 @@ Create a new file `backend/printers/your_printer.py`:
 ```python
 from __future__ import annotations
 from typing import Mapping, Any
+from printers.base import PrinterAdapter
 
-class YourPrinterAdapter:
+class YourPrinterAdapter(PrinterAdapter):
     type = "your_printer"  # Unique identifier for this printer family
 
     def __init__(self, url: str, api_key: str, **kwargs):
@@ -57,12 +64,13 @@ class YourPrinterAdapter:
     async def get_status(self) -> Mapping[str, Any]:
         """Return printer status with temperatures and state.
         
+        This method is REQUIRED by the PrinterAdapter abstract base class.
+        
         Returns:
             {
                 "bed_temperature": float | None,
                 "nozzle_temperatures": float | list[float] | None,
                 "print_status": str | None,        # Raw status from printer
-                "print_phase": str,                # Normalized: idle, printing, paused, error, etc.
                 "print_error_code": int | None,
                 "has_error": bool,
             }
@@ -81,6 +89,8 @@ class YourPrinterAdapter:
     async def get_print_status_raw(self) -> Mapping[str, Any]:
         """Return raw status string from printer API.
         
+        This method is REQUIRED by the PrinterAdapter abstract base class.
+        
         Returns:
             {"print_status": str}
         """
@@ -89,6 +99,8 @@ class YourPrinterAdapter:
     async def get_percentage(self) -> Mapping[str, Any]:
         """Return print progress percentage.
         
+        This method is REQUIRED by the PrinterAdapter abstract base class.
+        
         Returns:
             {"print_percentage": int}  # 0-100
         """
@@ -96,6 +108,8 @@ class YourPrinterAdapter:
 
     async def get_filament_info(self) -> Mapping[str, Any]:
         """Return loaded filament/material information.
+        
+        This method is REQUIRED by the PrinterAdapter abstract base class.
         
         Returns:
             {
@@ -109,6 +123,8 @@ class YourPrinterAdapter:
     async def home(self) -> Mapping[str, Any]:
         """Home all axes.
         
+        This method is REQUIRED by the PrinterAdapter abstract base class.
+        
         Returns:
             {"status": "success", "action": "home"} or {"error": str}
         """
@@ -116,19 +132,30 @@ class YourPrinterAdapter:
         return {"error": "not implemented"}
 
     async def pause(self) -> Mapping[str, Any]:
-        """Pause current print."""
+        """Pause current print.
+        
+        This method is REQUIRED by the PrinterAdapter abstract base class.
+        """
         return {"error": "not implemented"}
 
     async def resume(self) -> Mapping[str, Any]:
-        """Resume paused print."""
+        """Resume paused print.
+        
+        This method is REQUIRED by the PrinterAdapter abstract base class.
+        """
         return {"error": "not implemented"}
 
     async def cancel(self) -> Mapping[str, Any]:
-        """Cancel/stop current print."""
+        """Cancel/stop current print.
+        
+        This method is REQUIRED by the PrinterAdapter abstract base class.
+        """
         return {"error": "not implemented"}
 
     async def send_gcode(self, gcode: str | list[str], gcode_check: bool = True) -> Mapping[str, Any]:
         """Send raw G-code commands to printer.
+        
+        This method is REQUIRED by the PrinterAdapter abstract base class.
         
         Args:
             gcode: Single command string or list of commands
@@ -143,6 +170,8 @@ class YourPrinterAdapter:
     @property
     def capabilities(self) -> Mapping[str, bool]:
         """Advertise which features this printer supports.
+        
+        This property is REQUIRED by the PrinterAdapter abstract base class.
         
         The frontend can query /api/printers/{id}/capabilities to
         conditionally show/hide UI controls.
@@ -346,17 +375,67 @@ The status broadcaster in `main.py` automatically works with your adapter. It wi
 
 No modifications needed unless you want custom polling intervals.
 
+## Required Methods Summary
+
+When inheriting from `PrinterAdapter`, you **must** implement these abstract methods:
+
+| Method | Return Type | Description |
+|--------|------------|-------------|
+| `connect()` | `None` | Establish connection to printer |
+| `get_status()` | `Mapping[str, Any]` | Get full status (temps, state, errors) |
+| `get_print_status_raw()` | `Mapping[str, Any]` | Get raw status string from printer |
+| `get_percentage()` | `Mapping[str, Any]` | Get print progress (0-100) |
+| `get_filament_info()` | `Mapping[str, Any]` | Get loaded material info |
+| `home()` | `Mapping[str, Any]` | Home all axes |
+| `pause()` | `Mapping[str, Any]` | Pause current print |
+| `resume()` | `Mapping[str, Any]` | Resume paused print |
+| `cancel()` | `Mapping[str, Any]` | Cancel/stop print |
+| `send_gcode()` | `Mapping[str, Any]` | Send G-code commands |
+| `capabilities` (property) | `Mapping[str, bool]` | Declare feature support |
+
+**All return types must be `Mapping[str, Any]` for JSON serialization compatibility.**
+
 ## Example Adapters for Reference
 
-### OctoPrint
-See `backend/printers/octoprint.py` (stub, ready for implementation)
-
-### Bambu Labs
-See `backend/bambu_client.py` for a complete working example with:
-- High-level library wrapper (`bambulabs_api`) that abstracts MQTT internally
-- Status normalization (`print_phase` mapping)
-- Error code handling
+### Bambu Labs (Complete Implementation)
+See `backend/bambu_client.py` for a fully working example:
+- Inherits from `PrinterAdapter` abstract base class
+- Uses high-level library wrapper (`bambulabs_api`) that abstracts MQTT internally
+- Implements all 11 required methods with proper type hints
+- Error code handling via `print_error_code`
 - G-code passthrough via `send_gcode()`
+- Comprehensive capabilities declaration
+
+Key snippets from `BambuPrinter`:
+```python
+from printers.base import PrinterAdapter
+
+class BambuPrinter(PrinterAdapter):
+    type = "bambu"
+    
+    async def get_status(self) -> Mapping[str, Any]:
+        # Reuses get_print_status_raw() to avoid duplication
+        raw_status_data = await self.get_print_status_raw()
+        return {
+            "bed_temperature": self.client.get_bed_temperature(),
+            "nozzle_temperatures": self.client.get_nozzle_temperature(),
+            "print_status": raw_status_data.get('print_status'),
+            "print_error_code": self.client.print_error_code(),
+            "has_error": self.client.print_error_code() != 0,
+        }
+    
+    @property
+    def capabilities(self) -> Mapping[str, bool]:
+        return {
+            "status": True, "percentage": True, "filament": True,
+            "error_codes": True, "home": True, "pause": True,
+            "resume": True, "cancel": True, "gcode": True,
+            "jog_xy": False, "move_z": True
+        }
+```
+
+### OctoPrint (Stub)
+See `backend/printers/octoprint.py` (ready for implementation)
 
 ## Common Patterns
 
@@ -375,24 +454,31 @@ async def get_status(self):
 ### Library Wrapper (Bambu uses `bambulabs_api`, similar to `octorest` for OctoPrint)
 ```python
 from some_printer_library import PrinterClient
+from printers.base import PrinterAdapter
+from typing import Mapping, Any
 
-def __init__(self, host: str, api_key: str, **kwargs):
-    self.client = PrinterClient(host, api_key)
-    self.connected = False
+class LibraryBasedAdapter(PrinterAdapter):
+    type = "library_printer"
+    
+    def __init__(self, host: str, api_key: str, **kwargs):
+        self.client = PrinterClient(host, api_key)
+        self.connected = False
 
-async def connect(self):
-    if not self.connected:
-        self.client.connect()  # Library handles underlying protocol (MQTT, WebSocket, etc.)
-        self.connected = True
+    async def connect(self) -> None:
+        if not self.connected:
+            self.client.connect()  # Library handles underlying protocol (MQTT, WebSocket, etc.)
+            self.connected = True
 
-async def get_status(self):
-    # Synchronous library call wrapped in async
-    return {
-        "bed_temperature": self.client.get_bed_temperature(),
-        "nozzle_temperatures": self.client.get_nozzle_temperature(),
-        "print_status": self.client.get_current_state().name,
-        ...
-    }
+    async def get_status(self) -> Mapping[str, Any]:
+        # Synchronous library call wrapped in async
+        return {
+            "bed_temperature": self.client.get_bed_temperature(),
+            "nozzle_temperatures": self.client.get_nozzle_temperature(),
+            "print_status": self.client.get_current_state().name,
+            "has_error": False,
+        }
+    
+    # ... implement remaining abstract methods ...
 ```
 
 ### Raw Socket-Based (Klipper Moonraker WS, custom MQTT)
@@ -418,6 +504,15 @@ async def get_status(self):
 
 ## Troubleshooting
 
+### "TypeError: Can't instantiate abstract class"
+Your adapter is missing one or more required abstract methods from `PrinterAdapter`. Check the error message to see which methods need to be implemented.
+
+### Type hint errors
+All methods must return `Mapping[str, Any]` (not `dict`). Import from `typing`:
+```python
+from typing import Mapping, Any
+```
+
 ### "Printer does not support [action]"
 Check that your adapter implements the method and `capabilities` includes it.
 
@@ -430,6 +525,15 @@ Ensure your adapter class has a `type` class attribute set to a unique string.
 ### Config not persisting
 Add your adapter's serialization logic to `registry.py`'s `save()` method.
 
+### IDE not showing autocomplete
+Make sure your class properly inherits from `PrinterAdapter`:
+```python
+from printers.base import PrinterAdapter
+
+class YourAdapter(PrinterAdapter):  # ← Must inherit
+    ...
+```
+
 ## Next Steps
 
 1. Implement basic status retrieval first
@@ -439,13 +543,23 @@ Add your adapter's serialization logic to `registry.py`'s `save()` method.
 5. Implement file upload if your printer supports it
 6. Submit a PR to share your adapter with the community!
 
+## Best Practices
+
+1. **DRY Principle**: Reuse methods where possible (like `BambuPrinter.get_status()` calls `get_print_status_raw()`)
+2. **Type Safety**: Always use `Mapping[str, Any]` return types, not `dict`
+3. **Error Handling**: Return `{"error": "message"}` instead of raising exceptions
+4. **Async All The Way**: Use `async def` for all interface methods even if the underlying library is sync
+5. **Capabilities First**: Accurately declare what your printer supports in the `capabilities` property
+6. **Test Early**: Use a test script before integrating with the full system
+
 ## Resources
 
-- **Base Protocol**: `backend/printers/base.py`
-- **Reference Implementation**: `backend/bambu_client.py`
-- **Registry Factory**: `backend/registry.py`
-- **API Documentation**: Check your printer's API docs
+- **Abstract Base Class**: `backend/printers/base.py` - See all required methods
+- **Complete Reference**: `backend/bambu_client.py` - Working implementation with all features
+- **Registry Factory**: `backend/registry.py` - How adapters are loaded and persisted
+- **Printer API Documentation**: Check your printer's API docs
   - OctoPrint: https://docs.octoprint.org/en/master/api/
   - Moonraker: https://moonraker.readthedocs.io/
   - Duet: https://duet3d.dozuki.com/Wiki/HTTP_requests
   - Prusa Connect: https://connect.prusa3d.com/docs/
+  - Bambu API: https://bambutools.github.io/bambulabs_api/
