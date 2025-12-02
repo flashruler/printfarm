@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 
 export type PrinterListItem = { id: string; type: string }
 export interface PrinterStatus {
@@ -260,26 +260,28 @@ const ERROR_STATUSES = new Set([
 
 export function usePrinterError(id: string): ErrorState {
   const { data: status } = usePrinterStatus(id, true)
-  const [timeoutState, setTimeoutState] = useState<{
-    status: string | null
-    startTime: number | null
-  }>({ status: null, startTime: null })
-
+  
   const currentStatus = status?.print_status || null
   const hasErrorCode = typeof status?.print_error_code === 'number' && status.print_error_code !== 0
   const hasErrorFlag = status?.has_error === true
 
-  useEffect(() => {
-    if (!currentStatus) {
-      setTimeoutState({ status: null, startTime: null })
-      return
-    }
+  // Store timeout tracking in a ref to avoid re-renders and infinite loops
+  const timeoutTrackingRef = useRef<Map<string, number>>(new Map())
 
-    // If status changed, reset timer
-    if (currentStatus !== timeoutState.status) {
-      setTimeoutState({ status: currentStatus, startTime: Date.now() })
+  // Track status changes without causing re-renders
+  const prevStatusRef = useRef<string | null>(null)
+  
+  // Only update tracking when status actually changes
+  if (currentStatus !== prevStatusRef.current) {
+    if (currentStatus) {
+      // Status changed - record new start time
+      timeoutTrackingRef.current.set(currentStatus, Date.now())
+    } else {
+      // Status cleared
+      timeoutTrackingRef.current.clear()
     }
-  }, [currentStatus, timeoutState.status])
+    prevStatusRef.current = currentStatus
+  }
 
   // Check for explicit errors
   const isExplicitError = ERROR_STATUSES.has(currentStatus || '') || hasErrorCode || hasErrorFlag
@@ -292,15 +294,18 @@ export function usePrinterError(id: string): ErrorState {
   }
 
   // Check for timeout errors
-  if (currentStatus && TIMEOUT_THRESHOLDS[currentStatus] && timeoutState.startTime) {
-    const elapsed = (Date.now() - timeoutState.startTime) / 1000
-    const threshold = TIMEOUT_THRESHOLDS[currentStatus]
-    
-    if (elapsed > threshold) {
-      return {
-        isError: true,
-        errorReason: `${currentStatus} taking longer than expected (>${threshold}s)`,
-        errorType: 'timeout'
+  if (currentStatus && TIMEOUT_THRESHOLDS[currentStatus]) {
+    const startTime = timeoutTrackingRef.current.get(currentStatus)
+    if (startTime) {
+      const elapsed = (Date.now() - startTime) / 1000
+      const threshold = TIMEOUT_THRESHOLDS[currentStatus]
+      
+      if (elapsed > threshold) {
+        return {
+          isError: true,
+          errorReason: `${currentStatus} taking longer than expected (>${threshold}s)`,
+          errorType: 'timeout'
+        }
       }
     }
   }
@@ -355,6 +360,19 @@ export function useUploadGcode() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["print-history"] })
+    }
+  })
+}
+
+export interface GcodeResult {
+  ok?: boolean
+  error?: string
+}
+
+export function useSendGcode() {
+  return useMutation<GcodeResult, Error, { printerId: string; gcode: string | string[] }>({
+    mutationFn: async ({ printerId, gcode }) => {
+      return postJson<GcodeResult>(`/api/printers/${encodeURIComponent(printerId)}/gcode`, { gcode })
     }
   })
 }

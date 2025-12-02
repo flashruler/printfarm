@@ -4,6 +4,5 @@ httpx
 websockets
 pydantic
 python-dotenv
-bambulabs-api
-python-multipart
+bambulabs_api
 python-multipart

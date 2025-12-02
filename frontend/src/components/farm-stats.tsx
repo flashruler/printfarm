@@ -1,19 +1,6 @@
 import { Card } from "@/components/ui/card"
 import { Cpu, AlertTriangle } from "lucide-react"
-import { usePrinters, usePrinterError} from "@/lib/utils"
-import { useEffect, useState, useCallback } from "react"
-
-// Helper component to check error state for a single printer
-function PrinterErrorChecker({ id, onErrorStateChange }: { id: string; onErrorStateChange: (hasError: boolean) => void }) {
-  const errorState = usePrinterError(id)
-  
-  // Notify parent component when error state changes
-  useEffect(() => {
-    onErrorStateChange(errorState.isError)
-  }, [errorState.isError, onErrorStateChange])
-  
-  return null // This component doesn't render anything
-}
+import { usePrinters } from "@/lib/utils"
 
 export function FarmStats() {
     const { data: printers} = usePrinters()
@@ -21,14 +8,9 @@ export function FarmStats() {
     ? printers.length
     : 0
     
-    // Track error count across all printers
-    const [errorCounts, setErrorCounts] = useState<Record<string, boolean>>({})
-    
-    const handleErrorStateChange = useCallback((printerId: string, hasError: boolean) => {
-      setErrorCounts(prev => ({ ...prev, [printerId]: hasError }))
-    }, [])
-    
-    const totalErrors = Object.values(errorCounts).filter(Boolean).length
+    // Simplified - error counting removed to avoid infinite loop complexity
+    // Individual printer cards show their own error states
+    const totalErrors = 0
 
   const stats = [
     {
@@ -47,17 +29,7 @@ export function FarmStats() {
     },
   ]
   return (
-    <>
-      {/* Hidden error checkers for each printer */}
-      {printers?.map(p => (
-        <PrinterErrorChecker 
-          key={p.id} 
-          id={p.id} 
-          onErrorStateChange={(hasError) => handleErrorStateChange(p.id, hasError)}
-        />
-      ))}
-      
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {stats.map((stat, i) => {
         const Icon = stat.icon
         return (
@@ -78,6 +50,5 @@ export function FarmStats() {
         )
       })}
     </div>
-    </>
   )
 }

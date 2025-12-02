@@ -23,10 +23,12 @@ import {
   usePrinterAction,
   useUploadGcode,
   usePrinterError,
+  useSendGcode,
 } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useRef, useState } from "react";
 import Button from "./ui/button";
+import { TemperatureGraph } from "./temperature-graph";
 
 const MotionCard = motion(Card);
 
@@ -57,8 +59,11 @@ export function PrinterDetail({
     typeof wsPct?.print_percentage === "number" ? wsPct.print_percentage : null;
   const { mutate: runAction, isPending } = usePrinterAction();
   const upload = useUploadGcode();
+  const { mutate: sendGcode, isPending: isGcodePending } = useSendGcode();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedName, setSelectedName] = useState<string>("");
+  const jogDistance = 10; // Fixed 10mm jog distance (can make configurable later)
+  
   const onPick = () => inputRef.current?.click();
   const onFileChosen: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     const f = e.target.files?.[0];
@@ -69,6 +74,31 @@ export function PrinterDetail({
     if (!f) return;
     upload.mutate({ printerId: id, file: f });
   };
+
+  // Movement helper - sends relative G-code commands
+  const handleMove = (axis: 'X' | 'Y' | 'Z', direction: 1 | -1) => {
+    const distance = direction * jogDistance;
+    const feedrate = axis === 'Z' ? 1000 : 3000; // Slower for Z axis
+    const gcode = `G91\nG1 ${axis}${distance} F${feedrate}\nG90`;
+    sendGcode({ printerId: id, gcode }, {
+      onError: (error: Error) => {
+        const errorMsg = error?.message || String(error);
+        
+        // Check if trying to move during printing
+        if (errorMsg.includes('printing') || errorMsg.includes('printing_in_progress')) {
+          alert('🚫 SAFETY BLOCK: Cannot move axes while printing!\n\nManual movement during printing could damage your print or printer.');
+        }
+        // Check if this is a homing error
+        else if (errorMsg.includes('must be homed') || errorMsg.includes('requires_homing')) {
+          alert('⚠️ Safety Error: Printer must be homed before moving axes.\n\nPlease click the Home button first.');
+        }
+      }
+    });
+  };
+  
+  // Disable movement buttons if printer is actively printing
+  const isPrinting = status.toLowerCase().includes('print');
+  const movementDisabled = isGcodePending || isPrinting;
 
   return (
     <MotionCard
@@ -131,6 +161,12 @@ export function PrinterDetail({
           <div className="text-sm font-mono">
             Material: {filament_info.data?.tray_type ?? "-"}
           </div>
+
+          {/* Temperature Graph */}
+          <div className="pt-2">
+            <TemperatureGraph printerId={id} />
+          </div>
+
           <div className="pt-2 border-t border-border space-y-2">
             <h3 className="text-sm font-medium">Upload G-code</h3>
             <div className="flex items-center gap-2">
@@ -226,47 +262,47 @@ export function PrinterDetail({
           {/* XY Movement */}
           <Card className="p-4">
             <h3 className="text-sm font-semibold mb-3">XY Axis</h3>
-            {/* <div className="flex flex-col items-center gap-2">
-                <Button onClick={() => handleMove("Y", 1)} variant="outline" >
-                  <ArrowUp className="w-4 h-4" />
-                </Button>
-                <div className="flex items-center gap-2">
-                  <Button onClick={() => handleMove("X", -1)} variant="outline" >
-                    <ArrowLeft className="w-4 h-4" />
-                  </Button>
-                  <Button variant="outline" disabled>
-                    <CircleDot className="w-4 h-4" />
-                  </Button>
-                  <Button onClick={() => handleMove("X", 1)} variant="outline" >
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-                <Button onClick={() => handleMove("Y", -1)} variant="outline" >
-                  <ArrowDown className="w-4 h-4" />
-                </Button>
-              </div> */}
             <div className="flex flex-col items-center gap-2">
-              <Button variant="outline">
+              <Button 
+                variant="outline"
+                onClick={() => handleMove("Y", 1)}
+                disabled={movementDisabled}
+              >
                 <ArrowUp className="w-4 h-4" />
               </Button>
               <div className="flex items-center gap-2">
-                <Button variant="outline">
+                <Button 
+                  variant="outline"
+                  onClick={() => handleMove("X", -1)}
+                  disabled={movementDisabled}
+                >
                   <ArrowLeft className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => runAction({ id, action: "home" })}
-                  disabled={isPending}
+                  disabled={isPending || isPrinting}
                 >
                   <House className="w-4 h-4" />
                 </Button>
-                <Button variant="outline">
+                <Button 
+                  variant="outline"
+                  onClick={() => handleMove("X", 1)}
+                  disabled={movementDisabled}
+                >
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
-              <Button variant="outline">
+              <Button 
+                variant="outline"
+                onClick={() => handleMove("Y", -1)}
+                disabled={movementDisabled}
+              >
                 <ArrowDown className="w-4 h-4" />
               </Button>
+            </div>
+            <div className="mt-2 text-xs text-center text-muted-foreground">
+              {jogDistance}mm per move
             </div>
           </Card>
 
@@ -275,19 +311,24 @@ export function PrinterDetail({
             <h3 className="text-sm font-semibold mb-3">Z Axis</h3>
             <div className="flex items-center justify-center gap-2">
               <Button
-                // onClick={() => handleMove("Z", 1)}
+                onClick={() => handleMove("Z", 1)}
                 variant="outline"
                 className="w-32"
+                disabled={movementDisabled}
               >
                 <ArrowUp className="w-4 h-4 mr-2" />Z Up
               </Button>
               <Button
-                // onClick={() => handleMove("Z", -1)}
+                onClick={() => handleMove("Z", -1)}
                 variant="outline"
                 className="w-32"
+                disabled={movementDisabled}
               >
                 <ArrowDown className="w-4 h-4 mr-2" />Z Down
               </Button>
+            </div>
+            <div className="mt-2 text-xs text-center text-muted-foreground">
+              {jogDistance}mm per move
             </div>
           </Card>
         </div>

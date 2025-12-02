@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from bambu_client import BambuPrinter
+from printers.bambu_client import BambuPrinter
 from typing import Any, Dict
 from importlib import import_module
 
@@ -92,6 +92,10 @@ class PrinterRegistry:
             self.save()
             return True
         return False
+    
+    def get_printer(self, printer_id: str):
+        """Get a specific printer by ID."""
+        return self.printers.get(printer_id)
     
     def get_printer_count(self):
         """Get the total number of printers in the registry."""

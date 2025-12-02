@@ -1,46 +1,57 @@
-
-import PrinterManager from './components/PrinterManager';
-import { FarmStats } from './components/farm-stats';
-// import { ActivityChart } from './components/activity-chart';
-import { PrinterGrid } from './components/printer-grid';
-// import { JobQueue } from './components/job-queue';
-// import { MaterialUsage } from './components/material-usage';
-// import { PrintHistory } from './components/print-history';
-import './App.css'
-import { useStatusStream } from '@/lib/utils'
+import { useState } from "react";
+import PrinterManager from "./components/PrinterManager";
+import { FarmStats } from "./components/farm-stats";
+import { PrinterGrid } from "./components/printer-grid";
+import { Sidebar } from "./components/Sidebar";
+import "./App.css";
+import { useStatusStream } from "@/lib/utils";
 
 function App() {
-  // Establish a single WebSocket connection to receive live updates (e.g., print percentage)
-  useStatusStream(true)
+  // Establish a single WebSocket connection to receive live updates
+  useStatusStream(true);
+
+  const [currentView, setCurrentView] = useState("dashboard");
 
   return (
-    <div className="p-6 space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold mb-4">PrintFarm Dashboard</h1>
-      </header>
+    <div className="flex h-screen bg-background">
+      {/* VS Code-style Sidebar */}
+      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
 
-      {/* Top KPIs */}
-      <FarmStats />
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-auto">
+        {currentView === "dashboard" && (
+          <div className="p-6 space-y-8">
+            <header>
+              <h1 className="text-2xl font-bold mb-4">PrintFarm Dashboard</h1>
+            </header>
 
-      {/* Main content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {/* <ActivityChart /> */}
-          <PrinterGrid />
-        </div>
-        <div className="space-y-6">
-          {/* <PrintHistory /> */}
-          {/* <MaterialUsage /> */}
-        </div>
+            {/* Top KPIs */}
+            <FarmStats />
+
+            {/* Main content - Full width */}
+            <div className="space-y-6">
+              <PrinterGrid />
+            </div>
+          </div>
+        )}
+
+        {/* Placeholder for other views */}
+        {currentView === "printers" && (
+          <div className="p-6">
+            <h1 className="text-2xl font-bold mb-4 capitalize">
+              {currentView}
+            </h1>
+            <p className="text-muted-foreground">Coming soon...</p>
+            {/* Management utilities */}
+            <section className="pt-4 border-t">
+              <h2 className="text-xl font-semibold mb-2">Manage Printers</h2>
+              <PrinterManager />
+            </section>
+          </div>
+        )}
       </div>
-
-      {/* Management utilities */}
-      <section className="pt-4 border-t">
-        <h2 className="text-xl font-semibold mb-2">Manage Printers</h2>
-        <PrinterManager />
-      </section>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
