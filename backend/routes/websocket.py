@@ -42,8 +42,17 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # Keep connection alive, client will receive broadcasts
             data = await websocket.receive_text()
+            # Respond to ping messages to keep connection alive
+            if data == "ping":
+                await websocket.send_text("pong")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        try:
+            manager.disconnect(websocket)
+        except:
+            pass
 
 
 async def broadcast_status(shutdown_event=None):

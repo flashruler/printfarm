@@ -126,6 +126,7 @@ registry = PrinterRegistry()
 # Set registry for all route modules
 printers.set_registry(registry)
 printer_control.set_registry(registry)
+jobs.set_registry(registry)
 websocket.set_registry(registry)
 
 # Include routers
