@@ -1,20 +1,13 @@
 // JSX runtime is automatic; no explicit React import required
+import { useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import Button from "@/components/ui/button";
 import {
-  Thermometer,
-  AlertCircle,
   XCircle,
-  PauseCircle,
-  PlayCircle,
-  House,
-  Upload,
   AlertTriangle,
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
+  Edit3,
+  RotateCcw,
 } from "lucide-react";
 import {
   usePrinterStatus,
@@ -26,9 +19,22 @@ import {
   useSendGcode,
 } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useRef, useState } from "react";
-import Button from "./ui/button";
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TemperatureGraph } from "./temperature-graph";
+import { PrinterVitals } from "./printer-vitals";
+import { PrintProgress } from "./print-progress";
+import { PrintControls } from "./print-controls";
+import { MovementControls } from "./movement-controls";
+import { GCodeUploader } from "./gcode-uploader";
+import { DraggableCard } from "./draggable-card";
+import { 
+  loadLayoutConfig, 
+  saveLayoutConfig, 
+  resetLayoutConfig,
+  type ComponentConfig,
+  type ComponentId 
+} from "@/lib/layout-config";
 
 const MotionCard = motion(Card);
 
@@ -41,8 +47,12 @@ export function PrinterDetail({
   onClose: () => void;
   className?: string;
 }) {
-  const { data, isLoading, error } = usePrinterStatus(id, true);
+  const { data } = usePrinterStatus(id, true);
   const errorState = usePrinterError(id);
+  
+  // Layout configuration state
+  const [layoutConfig, setLayoutConfig] = useState(() => loadLayoutConfig());
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const bed =
     typeof data?.bed_temperature === "number" ? data?.bed_temperature : null;
@@ -60,23 +70,10 @@ export function PrinterDetail({
   const { mutate: runAction, isPending } = usePrinterAction();
   const upload = useUploadGcode();
   const { mutate: sendGcode, isPending: isGcodePending } = useSendGcode();
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedName, setSelectedName] = useState<string>("");
   const jogDistance = 10; // Fixed 10mm jog distance (can make configurable later)
-  
-  const onPick = () => inputRef.current?.click();
-  const onFileChosen: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const f = e.target.files?.[0];
-    setSelectedName(f?.name || "");
-  };
-  const onUpload = () => {
-    const f = inputRef.current?.files?.[0];
-    if (!f) return;
-    upload.mutate({ printerId: id, file: f });
-  };
 
   // Movement helper - sends relative G-code commands
-  const handleMove = (axis: 'X' | 'Y' | 'Z', direction: 1 | -1) => {
+  const handleMoveAxis = (axis: 'X' | 'Y' | 'Z', direction: 1 | -1) => {
     const distance = direction * jogDistance;
     const feedrate = axis === 'Z' ? 1000 : 3000; // Slower for Z axis
     const gcode = `G91\nG1 ${axis}${distance} F${feedrate}\nG90`;
@@ -96,9 +93,157 @@ export function PrinterDetail({
     });
   };
   
+  const handleHome = () => {
+    runAction({ id, action: "home" });
+  };
+  
+  const handlePrintAction = (action: string) => {
+    runAction({ id, action: action as "pause" | "resume" | "cancel" | "home" });
+  };
+  
+  const handleUpload = (file: File) => {
+    upload.mutate({ printerId: id, file });
+  };
+  
   // Disable movement buttons if printer is actively printing
   const isPrinting = status.toLowerCase().includes('print');
   const movementDisabled = isGcodePending || isPrinting;
+
+  // Handlers for layout configuration
+  const handleMove = (dragId: ComponentId, hoverId: ComponentId) => {
+    setLayoutConfig((prev) => {
+      const components = [...prev.components];
+      const dragIndex = components.findIndex((c) => c.id === dragId);
+      const hoverIndex = components.findIndex((c) => c.id === hoverId);
+
+      if (dragIndex === -1 || hoverIndex === -1) return prev;
+
+      const dragComponent = components[dragIndex];
+      const hoverComponent = components[hoverIndex];
+
+      // Only allow reordering within the same column
+      if (dragComponent.column !== hoverComponent.column) return prev;
+
+      // Reorder by removing and inserting
+      components.splice(dragIndex, 1);
+      components.splice(hoverIndex, 0, dragComponent);
+
+      // Update order values
+      components.forEach((c, idx) => {
+        c.order = idx;
+      });
+
+      const newConfig = { components };
+      saveLayoutConfig(newConfig);
+      return newConfig;
+    });
+  };
+
+  const handleToggleComponent = (componentId: ComponentId) => {
+    setLayoutConfig((prev) => {
+      const components = prev.components.map((c) =>
+        c.id === componentId ? { ...c, enabled: !c.enabled } : c
+      );
+      const newConfig = { components };
+      saveLayoutConfig(newConfig);
+      return newConfig;
+    });
+  };
+
+  const handleResetLayout = () => {
+    const defaultConfig = resetLayoutConfig();
+    setLayoutConfig(defaultConfig);
+  };
+
+  const handleToggleEditMode = () => {
+    setIsEditMode(!isEditMode);
+  };
+
+  // Separate components by column and sort by order
+  const leftComponents = useMemo(
+    () =>
+      layoutConfig.components
+        .filter((c) => c.column === 'left')
+        .sort((a, b) => a.order - b.order),
+    [layoutConfig]
+  );
+
+  const rightComponents = useMemo(
+    () =>
+      layoutConfig.components
+        .filter((c) => c.column === 'right')
+        .sort((a, b) => a.order - b.order),
+    [layoutConfig]
+  );
+
+  // Component renderer
+  const renderComponent = (config: ComponentConfig) => {
+    let component: React.ReactNode = null;
+
+    switch (config.id) {
+      case 'vitals':
+        component = (
+          <PrinterVitals
+            nozzle={nozzle ?? null}
+            bed={bed}
+            status={status}
+            material={filament_info.data?.tray_type}
+          />
+        );
+        break;
+      case 'temperature-graph':
+        component = <TemperatureGraph printerId={id} />;
+        break;
+      case 'gcode-uploader':
+        component = (
+          <GCodeUploader
+            printerId={id}
+            onUpload={handleUpload}
+            isUploading={upload.isPending}
+            error={upload.isError ? String(upload.error?.message || "Upload failed") : null}
+            success={upload.isSuccess}
+          />
+        );
+        break;
+      case 'print-progress':
+        component = <PrintProgress status={status} percentage={percent} />;
+        break;
+      case 'print-controls':
+        component = (
+          <PrintControls
+            status={status}
+            isPending={isPending}
+            onAction={handlePrintAction}
+          />
+        );
+        break;
+      case 'movement-controls':
+        component = (
+          <MovementControls
+            isDisabled={movementDisabled}
+            onMove={handleMoveAxis}
+            onHome={handleHome}
+            jogDistance={jogDistance}
+          />
+        );
+        break;
+    }
+
+    return (
+      <DraggableCard
+        key={config.id}
+        id={config.id}
+        isEditMode={isEditMode}
+        isEnabled={config.enabled}
+        label={config.label}
+        column={config.column}
+        onToggle={() => handleToggleComponent(config.id)}
+        onMove={handleMove}
+      >
+        {component}
+      </DraggableCard>
+    );
+  };
 
   return (
     <MotionCard
@@ -127,13 +272,43 @@ export function PrinterDetail({
             </Badge>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <XCircle className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleToggleEditMode}
+            variant={isEditMode ? "default" : "outline"}
+            size="sm"
+          >
+            <Edit3 className="w-4 h-4 mr-1" />
+            {isEditMode ? "Done" : "Edit Layout"}
+          </Button>
+          {isEditMode && (
+            <Button
+              onClick={handleResetLayout}
+              variant="outline"
+              size="sm"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </Button>
+          )}
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
       </div>
+      
+      {isEditMode && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 text-sm">
+          <div className="font-medium text-blue-600 dark:text-blue-400 mb-1">
+            Edit Mode Active
+          </div>
+          <div className="text-muted-foreground text-xs">
+            Drag components to reorder • Click eye icon to show/hide • Click reset to restore defaults
+          </div>
+        </div>
+      )}
 
       {errorState.isError && errorState.errorReason && (
         <div className="flex items-start gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-destructive">
@@ -151,199 +326,19 @@ export function PrinterDetail({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2 text-left flex flex-col">
-          <h3 className="text-sm font-medium flex items-center gap-2">
-            <Thermometer className="w-4 h-4" /> Vitals
-          </h3>
-          <div className="text-sm font-mono">Nozzle: {nozzle ?? "-"}°C</div>
-          <div className="text-sm font-mono">Bed: {bed ?? "-"}°C</div>
-          <div className="text-sm font-mono">
-            Material: {filament_info.data?.tray_type ?? "-"}
+<DndProvider backend={HTML5Backend}>
+        <div className="grid grid-cols-2 gap-4">
+          {/* Left Column */}
+          <div className="space-y-4 text-left flex flex-col">
+            {leftComponents.map((config) => renderComponent(config))}
           </div>
 
-          {/* Temperature Graph */}
-          <div className="pt-2">
-            <TemperatureGraph printerId={id} />
-          </div>
-
-          <div className="pt-2 border-t border-border space-y-2">
-            <h3 className="text-sm font-medium">Upload G-code</h3>
-            <div className="flex items-center gap-2">
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".gcode,.g,.nc"
-                className="hidden"
-                onChange={onFileChosen}
-              />
-              <button
-                className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70"
-                onClick={onPick}
-              >
-                <Upload className="w-4 h-4" /> Choose File
-              </button>
-              <span className="text-xs text-muted-foreground truncate max-w-48">
-                {selectedName || "No file selected"}
-              </span>
-              <button
-                className="text-sm px-3 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                disabled={!selectedName || upload.isPending}
-                onClick={onUpload}
-              >
-                {upload.isPending ? "Uploading…" : "Upload & Print"}
-              </button>
-            </div>
-            {upload.isError && (
-              <div className="text-xs text-destructive">
-                {String(upload.error?.message || "Upload failed")}
-              </div>
-            )}
-            {upload.isSuccess && (
-              <div className="text-xs text-green-600">
-                Started print: {selectedName}
-              </div>
-            )}
+          {/* Right Column */}
+          <div className="space-y-4 flex flex-col">
+            {rightComponents.map((config) => renderComponent(config))}
           </div>
         </div>
-        {/* <div className="space-y-2">
-          <h3 className="text-sm font-medium flex items-center gap-2"><Droplets className="w-4 h-4" /> Material</h3>
-          <div className="text-sm text-muted-foreground">{filament_info.data?.tray_type ?? '-'}</div>
-        </div> */}
-
-        <div className="space-y-2 flex flex-col">
-          {status.toLowerCase() === "idle" ? (
-            <div className="text-center py-4 text-sm text-muted-foreground">
-              No active prints
-            </div>
-          ) : typeof percent === "number" ? (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Progress</span>
-                <span className="font-mono">{Math.round(percent)}%</span>
-              </div>
-              <Progress value={percent} />
-            </div>
-          ) : null}
-          <div className="pt-2 border-t border-border space-y-2">
-            <h3 className="text-sm font-medium">Controls</h3>
-            <div className="flex gap-3">
-              <button
-                className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70"
-                onClick={() => runAction({ id, action: "pause" })}
-                disabled={isPending}
-              >
-                <PauseCircle className="w-4 h-4" /> Pause
-              </button>
-              <button
-                className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70"
-                onClick={() => runAction({ id, action: "resume" })}
-                disabled={isPending}
-              >
-                <PlayCircle className="w-4 h-4" /> Resume
-              </button>
-              <button
-                className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70"
-                onClick={() => runAction({ id, action: "cancel" })}
-                disabled={isPending}
-              >
-                <XCircle className="w-4 h-4" /> Cancel
-              </button>
-              {/* <button
-                className="flex items-center gap-1 text-sm px-3 py-1 rounded bg-secondary hover:bg-secondary/70"
-                onClick={() => runAction({ id, action: "home" })}
-                disabled={isPending}
-              >
-                <House className="w-4 h-4" /> Home
-              </button> */}
-            </div>
-            {/* <p className="text-xs text-muted-foreground">(Control endpoints not implemented yet.)</p> */}
-          </div>
-          {/* XY Movement */}
-          <Card className="p-4">
-            <h3 className="text-sm font-semibold mb-3">XY Axis</h3>
-            <div className="flex flex-col items-center gap-2">
-              <Button 
-                variant="outline"
-                onClick={() => handleMove("Y", 1)}
-                disabled={movementDisabled}
-              >
-                <ArrowUp className="w-4 h-4" />
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline"
-                  onClick={() => handleMove("X", -1)}
-                  disabled={movementDisabled}
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => runAction({ id, action: "home" })}
-                  disabled={isPending || isPrinting}
-                >
-                  <House className="w-4 h-4" />
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => handleMove("X", 1)}
-                  disabled={movementDisabled}
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </div>
-              <Button 
-                variant="outline"
-                onClick={() => handleMove("Y", -1)}
-                disabled={movementDisabled}
-              >
-                <ArrowDown className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="mt-2 text-xs text-center text-muted-foreground">
-              {jogDistance}mm per move
-            </div>
-          </Card>
-
-          {/* Z Movement */}
-          <Card className="p-4">
-            <h3 className="text-sm font-semibold mb-3">Z Axis</h3>
-            <div className="flex items-center justify-center gap-2">
-              <Button
-                onClick={() => handleMove("Z", 1)}
-                variant="outline"
-                className="w-32"
-                disabled={movementDisabled}
-              >
-                <ArrowUp className="w-4 h-4 mr-2" />Z Up
-              </Button>
-              <Button
-                onClick={() => handleMove("Z", -1)}
-                variant="outline"
-                className="w-32"
-                disabled={movementDisabled}
-              >
-                <ArrowDown className="w-4 h-4 mr-2" />Z Down
-              </Button>
-            </div>
-            <div className="mt-2 text-xs text-center text-muted-foreground">
-              {jogDistance}mm per move
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      {status === "error" && (
-        <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 border border-destructive/30 text-destructive text-sm">
-          <AlertCircle className="w-4 h-4" /> Printer reports an error.
-        </div>
-      )}
-
-      <div className="text-xs text-muted-foreground">
-        {isLoading && "Loading detailed status..."}
-        {error && "Error loading status"}
-      </div>
+      </DndProvider>
     </MotionCard>
   );
 }
