@@ -21,12 +21,12 @@ import {
 import { motion } from "framer-motion";
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { TemperatureGraph } from "./temperature-graph";
+import { TemperatureGraph } from "../stats/temperature-graph";
 import { PrinterVitals } from "./printer-vitals";
-import { PrintProgress } from "./print-progress";
-import { PrintControls } from "./print-controls";
-import { MovementControls } from "./movement-controls";
-import { GCodeUploader } from "./gcode-uploader";
+import { PrintProgress } from "../jobs/print-progress";
+import { PrintControls } from "../controls/print-controls";
+import { MovementControls } from "../controls/movement-controls";
+import { GCodeUploader } from "../controls/gcode-uploader";
 import { DraggableCard } from "./draggable-card";
 import { 
   loadLayoutConfig, 

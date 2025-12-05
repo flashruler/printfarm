@@ -1,6 +1,6 @@
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, House } from "lucide-react";
 import Button from "@/components/ui/button";
-import Card from "./ui/card";
+import Card from "@/components/ui/card";
 
 interface MovementControlsProps {
   isDisabled: boolean;

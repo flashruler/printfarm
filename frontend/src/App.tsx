@@ -1,8 +1,8 @@
 import { useState } from "react";
-import PrinterManager from "./components/PrinterManager";
-import { FarmStats } from "./components/farm-stats";
-import { PrinterGrid } from "./components/printer-grid";
-import { Sidebar } from "./components/Sidebar";
+import PrinterManager from "./components/printer/PrinterManager";
+import { FarmStats } from "./components/stats/farm-stats";
+import { PrinterGrid } from "./components/printer/printer-grid";
+import { Sidebar } from "./components/layout/Sidebar";
 import "./App.css";
 import { useStatusStream } from "@/lib/utils";
 
