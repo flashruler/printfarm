@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card"
 import { Cpu, AlertTriangle } from "lucide-react"
 import { usePrinters } from "@/lib/utils"
+import { Slot } from "@/plugins/PluginRegistry"
 
 export function FarmStats() {
     const { data: printers} = usePrinters()
@@ -49,6 +50,9 @@ export function FarmStats() {
           </Card>
         )
       })}
+      
+      {/* Plugin widgets slot */}
+      <Slot name="farm-stats-widgets" />
     </div>
   )
 }

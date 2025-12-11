@@ -7,10 +7,16 @@ router = APIRouter(tags=["websocket"])
 
 # This will be set when the router is included in main.py
 registry: PrinterRegistry = None
+_event_bus = None  # Will be set by set_event_bus()
 
 def set_registry(printer_registry: PrinterRegistry):
     global registry
     registry = printer_registry
+
+def set_event_bus(event_bus_instance):
+    """Set the event bus for plugin event emission."""
+    global _event_bus
+    _event_bus = event_bus_instance
 
 
 class ConnectionManager:
@@ -178,6 +184,21 @@ async def broadcast_status(shutdown_event=None):
                                 "tray_type_changed": tray_type_changed,
                                 "status": status_payload,
                             })
+                            
+                            # Emit events for plugins
+                            if _event_bus:
+                                # Status update event
+                                await _event_bus.emit("printer.status.update", {
+                                    "printer_id": pid,
+                                    "status": status_payload,
+                                })
+                                
+                                # Percentage change event
+                                if pct_changed and rounded is not None:
+                                    await _event_bus.emit("printer.progress.update", {
+                                        "printer_id": pid,
+                                        "percentage": rounded,
+                                    })
                         except Exception as e:
                             print(f"Error broadcasting update for {pid}: {e}")
                     except TimeoutError as e:

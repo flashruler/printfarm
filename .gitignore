@@ -34,3 +34,14 @@ frontend/.env.*.local
 # OS
 .DS_Store
 Thumbs.db
+
+# User-installed plugins (keep infrastructure only)
+# Plugins should be in separate repos and installed via git clone or package manager
+backend/plugins/user_plugins/*
+!backend/plugins/user_plugins/.gitkeep
+frontend/src/plugins/user_plugins/*
+!frontend/src/plugins/user_plugins/.gitkeep
+
+# Plugin databases (auto-created)
+backend/plugins/user_plugins/*/*.db
+backend/plugins/user_plugins/*/*.db-journal

@@ -3,14 +3,24 @@ import PrinterManager from "./components/printer/PrinterManager";
 import { FarmStats } from "./components/stats/farm-stats";
 import { PrinterGrid } from "./components/printer/printer-grid";
 import { Sidebar } from "./components/layout/Sidebar";
+import { PluginProvider, usePlugins } from "./plugins/PluginRegistry";
 import "./App.css";
 import { useStatusStream } from "@/lib/utils";
 
 function App() {
+  return (
+    <PluginProvider>
+      <AppContent />
+    </PluginProvider>
+  );
+}
+
+function AppContent() {
   // Establish a single WebSocket connection to receive live updates
   useStatusStream(true);
 
   const [currentView, setCurrentView] = useState("dashboard");
+  const { plugins } = usePlugins();
 
   return (
     <div className="flex h-screen bg-background">
@@ -49,6 +59,16 @@ function App() {
             </section>
           </div>
         )}
+
+        {/* Plugin Views - dynamically rendered */}
+        {plugins.map((plugin) => {
+          const pluginViewId = plugin.manifest.sidebar?.id;
+          if (pluginViewId && currentView === pluginViewId) {
+            const PluginComponent = plugin.Component;
+            return <PluginComponent key={plugin.manifest.name} />;
+          }
+          return null;
+        })}
       </div>
     </div>
   );

@@ -13,6 +13,10 @@ import threading
 # Import route modules
 from routes import printers, printer_control, jobs, websocket
 
+# Import plugin system
+from core.event_bus import event_bus
+from plugins import plugin_registry
+
 load_dotenv()
 
 # Install system-wide exception hooks to catch exceptions from threads
@@ -128,6 +132,7 @@ printers.set_registry(registry)
 printer_control.set_registry(registry)
 jobs.set_registry(registry)
 websocket.set_registry(registry)
+websocket.set_event_bus(event_bus)
 
 # Include routers
 app.include_router(printers.router)
@@ -156,6 +161,11 @@ async def shutdown_event_handler():
 @app.on_event("startup")
 async def startup_event():
     global broadcaster_task
+    
+    # Load plugins
+    print("🔌 Loading plugins...")
+    await plugin_registry.load_plugins(app, registry, event_bus)
+    print(f"✅ Loaded {len(plugin_registry.plugins)} plugin(s)")
     
     # Connect to all printers, but don't let connection failures block startup
     for pid, printer in registry.printers.items():

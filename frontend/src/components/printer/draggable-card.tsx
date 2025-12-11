@@ -44,7 +44,7 @@ function EditableCard({
   const [, drop] = useDrop<DragItem>({
     accept: ITEM_TYPE,
     hover: (item: DragItem) => {
-      if (item.id !== id && item.column === column) {
+      if (item.id !== id) {
         onMove(item.id, id);
       }
     },

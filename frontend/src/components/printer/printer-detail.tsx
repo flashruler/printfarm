@@ -121,8 +121,8 @@ export function PrinterDetail({
       const dragComponent = components[dragIndex];
       const hoverComponent = components[hoverIndex];
 
-      // Only allow reordering within the same column
-      if (dragComponent.column !== hoverComponent.column) return prev;
+      // Allow cross-column dragging - update the column when moving between sides
+      dragComponent.column = hoverComponent.column;
 
       // Reorder by removing and inserting
       components.splice(dragIndex, 1);

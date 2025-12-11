@@ -1,5 +1,7 @@
-import { Home, Printer,Settings, Activity, Package, History, Bell, Library } from 'lucide-react';
+import { Home, Printer, Settings, Activity, Package, History, Bell, Library } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePlugins } from '@/plugins/PluginRegistry';
 
 interface SidebarProps {
   currentView: string;
@@ -11,19 +13,42 @@ interface SidebarButton {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   disabled?: boolean;
+  isPlugin?: boolean;
 }
 
-const sidebarButtons: SidebarButton[] = [
+const coreSidebarButtons: SidebarButton[] = [
   { id: 'dashboard', icon: Home, label: 'Dashboard' },
-  { id: 'printers', icon: Printer, label: 'Printers'},
+  { id: 'printers', icon: Printer, label: 'Printers' },
   { id: 'addons', icon: Library, label: 'Addons', disabled: true },
   { id: 'history', icon: History, label: 'History', disabled: true },
-  { id: 'materials', icon: Package, label: 'Materials', disabled: true },
   { id: 'activity', icon: Activity, label: 'Activity', disabled: true },
   { id: 'notifications', icon: Bell, label: 'Notifications', disabled: true },
 ];
 
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {
+  const { plugins } = usePlugins();
+
+  // Build dynamic sidebar buttons from plugins
+  const pluginButtons: SidebarButton[] = plugins
+    .filter((plugin) => plugin.manifest.sidebar)
+    .map((plugin) => {
+      const sidebar = plugin.manifest.sidebar!;
+      const IconComponent = (LucideIcons as any)[sidebar.icon] || Package;
+      
+      return {
+        id: sidebar.id,
+        icon: IconComponent,
+        label: sidebar.label,
+        disabled: false,
+        isPlugin: true,
+      };
+    });
+
+  // Merge core buttons with plugin buttons (remove core button if plugin provides it)
+  const pluginIds = new Set(pluginButtons.map(b => b.id));
+  const filteredCoreButtons = coreSidebarButtons.filter(b => !pluginIds.has(b.id));
+  const sidebarButtons = [...filteredCoreButtons, ...pluginButtons];
+
   return (
     <div className="w-16 bg-[#1e1e1e] border-r border-[#2d2d2d] flex flex-col items-center py-4 gap-2 shrink-0 h-screen sticky top-0">
       {sidebarButtons.map((button) => {
