@@ -1,7 +1,15 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
-const waitOn = require('wait-on');
+
+// Require wait-on using absolute path to frontend/node_modules
+const waitOnPath = path.join(__dirname, '../frontend/node_modules/wait-on');
+const waitOn = require(waitOnPath);
+
+// Add command-line switches for running as root and GPU issues
+app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
 
 let mainWindow;
 let backendProcess;
@@ -48,8 +56,20 @@ function startBackend() {
   return new Promise((resolve, reject) => {
     console.log('Starting backend server...');
 
+    // Path to backend directory
+    const backendPath = isDev
+      ? path.join(__dirname, '../backend')
+      : path.join(process.resourcesPath, 'backend');
+
     // Determine Python executable path
-    let pythonCmd = 'python';
+    let pythonCmd = 'python3';
+    
+    // Check for virtual environment
+    const venvPython = path.join(backendPath, 'venv', 'bin', 'python3');
+    if (require('fs').existsSync(venvPython)) {
+      pythonCmd = venvPython;
+      console.log('Using virtual environment Python:', venvPython);
+    }
     
     // In production, look for bundled Python or system Python
     if (!isDev) {
@@ -60,13 +80,9 @@ function startBackend() {
       }
     }
 
-    // Path to backend directory
-    const backendPath = isDev
-      ? path.join(__dirname, '../backend')
-      : path.join(process.resourcesPath, 'backend');
-
     // Start the backend process
-    const args = isDev ? ['main.py'] : [];
+    // Use uvicorn to run the FastAPI app
+    const args = isDev ? ['-m', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', BACKEND_PORT.toString()] : [];
     backendProcess = spawn(pythonCmd, args, {
       cwd: backendPath,
       env: { ...process.env, PORT: BACKEND_PORT.toString() },
