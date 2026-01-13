@@ -2,9 +2,10 @@ import { Card } from "@/components/ui/card"
 import { Cpu, AlertTriangle } from "lucide-react"
 import { usePrinters } from "@/lib/utils"
 import { Slot } from "@/plugins/PluginRegistry"
+import { LoadingScreen } from "@/components/ui/loading-screen"
 
 export function FarmStats() {
-    const { data: printers} = usePrinters()
+    const { data: printers, isLoading } = usePrinters()
     const activeCount = Array.isArray(printers)
     ? printers.length
     : 0
@@ -12,6 +13,10 @@ export function FarmStats() {
     // Simplified - error counting removed to avoid infinite loop complexity
     // Individual printer cards show their own error states
     const totalErrors = 0
+
+  if (isLoading) {
+    return <LoadingScreen message="Loading farm statistics..." />
+  }
 
   const stats = [
     {

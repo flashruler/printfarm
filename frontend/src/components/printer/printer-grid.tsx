@@ -8,6 +8,7 @@ import { usePrinters, usePrinterStatus, useWsPercentage, useWsTrayType, usePrint
 import { usePrinterSelection } from "@/lib/printerSelection"
 import PrinterDetail from "./printer-detail"
 import { motion } from "framer-motion"
+import { LoadingScreen } from "@/components/ui/loading-screen"
 
 // type StatusConfigKey = "printing" | "idle" | "error" | "unknown" | "finished"
 
@@ -172,7 +173,7 @@ export function PrinterGrid() {
         </Badge>
       </div>
 
-      {isLoading && <div className="text-sm text-muted-foreground">Loading printers...</div>}
+      {isLoading && <LoadingScreen message="Loading printers..." />}
       {error && <div className="text-sm text-destructive">{(error as Error).message}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">

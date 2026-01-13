@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePrinters, usePrinterStatus } from "@/lib/utils";
+import { LoadingSpinner } from "@/components/ui/loading-screen";
 
 type PrinterType = "bambu" | "prusalink" | "octoprint";
 
@@ -103,7 +104,7 @@ function PrinterRow({
       </div>
       {open && (
         <div className="mt-2 text-sm">
-          {statusLoading && <div>Loading status...</div>}
+          {statusLoading && <div className="flex items-center gap-2"><LoadingSpinner size="sm" /> Loading status...</div>}
           {statusError && (
             <div className="text-red-600">{statusError.message}</div>
           )}
